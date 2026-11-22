@@ -100,7 +100,9 @@ func (h *Handler) summary(w http.ResponseWriter, r *http.Request) {
 type PointDTO struct {
 	Date     string       `json:"date" example:"2026-11-18"`
 	NetWorth money.Amount `json:"netWorth" swaggertype:"string"`
-	Live     bool         `json:"live,omitempty"` // the point computed now for today
+	// Investments is the portfolio value of the day (the investments line of the net worth).
+	Investments money.Amount `json:"investments" swaggertype:"string"`
+	Live        bool         `json:"live,omitempty"` // the point computed now for today
 }
 
 // HistoryDTO is the net-worth graph of a space.
@@ -109,6 +111,8 @@ type HistoryDTO struct {
 	Range     string     `json:"range" enums:"1M,3M,6M,1Y,ALL"`
 	Points    []PointDTO `json:"points"`
 	ChangePct *money.Pct `json:"changePct" swaggertype:"string"` // first → last point, a percentage; null when it cannot be computed
+	// InvestmentsChangePct is the same change for the portfolio value.
+	InvestmentsChangePct *money.Pct `json:"investmentsChangePct" swaggertype:"string"`
 }
 
 // history godoc
@@ -134,9 +138,9 @@ func (h *Handler) history(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, err)
 		return
 	}
-	out := HistoryDTO{Currency: res.Currency, Range: res.Range, ChangePct: money.PctPtr(res.ChangePct), Points: make([]PointDTO, 0, len(res.Points))}
+	out := HistoryDTO{Currency: res.Currency, Range: res.Range, ChangePct: money.PctPtr(res.ChangePct), InvestmentsChangePct: money.PctPtr(res.InvestmentsChangePct), Points: make([]PointDTO, 0, len(res.Points))}
 	for _, p := range res.Points {
-		out.Points = append(out.Points, PointDTO{Date: p.Date, NetWorth: money.NewAmount(p.NetWorth, res.Currency), Live: p.Live})
+		out.Points = append(out.Points, PointDTO{Date: p.Date, NetWorth: money.NewAmount(p.NetWorth, res.Currency), Investments: money.NewAmount(p.Investments, res.Currency), Live: p.Live})
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(out)

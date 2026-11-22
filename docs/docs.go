@@ -7583,6 +7583,10 @@ const docTemplate = `{
                     "type": "string",
                     "example": "USD"
                 },
+                "investmentsChangePct": {
+                    "description": "InvestmentsChangePct is the same change for the portfolio value.",
+                    "type": "string"
+                },
                 "points": {
                     "type": "array",
                     "items": {
@@ -7648,6 +7652,10 @@ const docTemplate = `{
                 "date": {
                     "type": "string",
                     "example": "2026-11-18"
+                },
+                "investments": {
+                    "description": "Investments is the portfolio value of the day (the investments line of the net worth).",
+                    "type": "string"
                 },
                 "live": {
                     "description": "the point computed now for today",

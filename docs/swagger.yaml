@@ -1620,6 +1620,9 @@ definitions:
       currency:
         example: USD
         type: string
+      investmentsChangePct:
+        description: InvestmentsChangePct is the same change for the portfolio value.
+        type: string
       points:
         items:
           $ref: '#/definitions/networth.PointDTO'
@@ -1664,6 +1667,10 @@ definitions:
     properties:
       date:
         example: "2026-11-18"
+        type: string
+      investments:
+        description: Investments is the portfolio value of the day (the investments
+          line of the net worth).
         type: string
       live:
         description: the point computed now for today

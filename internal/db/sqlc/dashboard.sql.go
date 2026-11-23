@@ -110,6 +110,111 @@ func (q *Queries) ListActiveSpaceIDs(ctx context.Context) ([]uuid.UUID, error) {
 	return items, nil
 }
 
+const listFixedAssetFlows = `-- name: ListFixedAssetFlows :many
+SELECT 'PURCHASE'::text AS flow, c.new_value AS value, a.currency, c.changed_at AS at
+FROM manual_asset_value_changes c
+JOIN manual_assets a ON a.id = c.asset_id
+WHERE a.space_id = $1 AND a.kind = 'FIXED_ASSET' AND c.previous_value = 0 AND c.reason = 'MANUAL'
+  AND c.changed_at >= $2 AND c.changed_at <= $3
+UNION ALL
+SELECT 'DISPOSAL'::text, a.current_value, a.currency, a.deleted_at
+FROM manual_assets a
+WHERE a.space_id = $1 AND a.kind = 'FIXED_ASSET' AND a.deleted_at IS NOT NULL
+  AND a.deleted_at >= $2 AND a.deleted_at <= $3
+ORDER BY 4
+`
+
+type ListFixedAssetFlowsParams struct {
+	SpaceID uuid.UUID `json:"space_id"`
+	FromTs  time.Time `json:"from_ts"`
+	ToTs    time.Time `json:"to_ts"`
+}
+
+type ListFixedAssetFlowsRow struct {
+	Flow     string          `json:"flow"`
+	Value    decimal.Decimal `json:"value"`
+	Currency string          `json:"currency"`
+	At       time.Time       `json:"at"`
+}
+
+// Fixed assets bought (first value row, from 0) and disposed of (deleted) in a window.
+func (q *Queries) ListFixedAssetFlows(ctx context.Context, arg ListFixedAssetFlowsParams) ([]ListFixedAssetFlowsRow, error) {
+	rows, err := q.db.Query(ctx, listFixedAssetFlows, arg.SpaceID, arg.FromTs, arg.ToTs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListFixedAssetFlowsRow{}
+	for rows.Next() {
+		var i ListFixedAssetFlowsRow
+		if err := rows.Scan(
+			&i.Flow,
+			&i.Value,
+			&i.Currency,
+			&i.At,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listInvestmentTradeFlows = `-- name: ListInvestmentTradeFlows :many
+SELECT t.investment_action, t.quantity, t.unit_price, t.fee, t.occurred_at, i.quote_currency
+FROM transactions t
+JOIN investments i ON i.id = t.investment_id
+WHERE t.space_id = $1 AND t.type = 'TRANSFER' AND t.investment_action IN ('BUY', 'SELL')
+  AND t.occurred_at >= $2 AND t.occurred_at <= $3
+ORDER BY t.occurred_at
+`
+
+type ListInvestmentTradeFlowsParams struct {
+	SpaceID uuid.UUID `json:"space_id"`
+	FromTs  time.Time `json:"from_ts"`
+	ToTs    time.Time `json:"to_ts"`
+}
+
+type ListInvestmentTradeFlowsRow struct {
+	InvestmentAction *string             `json:"investment_action"`
+	Quantity         decimal.NullDecimal `json:"quantity"`
+	UnitPrice        decimal.NullDecimal `json:"unit_price"`
+	Fee              decimal.NullDecimal `json:"fee"`
+	OccurredAt       time.Time           `json:"occurred_at"`
+	QuoteCurrency    string              `json:"quote_currency"`
+}
+
+// BUY and SELL trades of the space's investments in a window, in the investment's quote currency.
+func (q *Queries) ListInvestmentTradeFlows(ctx context.Context, arg ListInvestmentTradeFlowsParams) ([]ListInvestmentTradeFlowsRow, error) {
+	rows, err := q.db.Query(ctx, listInvestmentTradeFlows, arg.SpaceID, arg.FromTs, arg.ToTs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListInvestmentTradeFlowsRow{}
+	for rows.Next() {
+		var i ListInvestmentTradeFlowsRow
+		if err := rows.Scan(
+			&i.InvestmentAction,
+			&i.Quantity,
+			&i.UnitPrice,
+			&i.Fee,
+			&i.OccurredAt,
+			&i.QuoteCurrency,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listNetWorthContributions = `-- name: ListNetWorthContributions :many
 SELECT id, type, direction, amount, currency, occurred_at
 FROM transactions
@@ -192,6 +297,55 @@ func (q *Queries) ListNetWorthSnapshots(ctx context.Context, arg ListNetWorthSna
 			&i.Receivables,
 			&i.Liabilities,
 			&i.NetWorth,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUnfundedInvestmentCreations = `-- name: ListUnfundedInvestmentCreations :many
+SELECT i.quote_currency, i.quantity, i.avg_buy_price, i.fees, i.created_at
+FROM investments i
+WHERE i.space_id = $1 AND i.deleted_at IS NULL
+  AND i.created_at >= $2 AND i.created_at <= $3
+  AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.investment_id = i.id)
+`
+
+type ListUnfundedInvestmentCreationsParams struct {
+	SpaceID uuid.UUID `json:"space_id"`
+	FromTs  time.Time `json:"from_ts"`
+	ToTs    time.Time `json:"to_ts"`
+}
+
+type ListUnfundedInvestmentCreationsRow struct {
+	QuoteCurrency string          `json:"quote_currency"`
+	Quantity      decimal.Decimal `json:"quantity"`
+	AvgBuyPrice   decimal.Decimal `json:"avg_buy_price"`
+	Fees          decimal.Decimal `json:"fees"`
+	CreatedAt     time.Time       `json:"created_at"`
+}
+
+// Investments added in a window with no trade at all (no funding wallet): their cost counts as money put in.
+func (q *Queries) ListUnfundedInvestmentCreations(ctx context.Context, arg ListUnfundedInvestmentCreationsParams) ([]ListUnfundedInvestmentCreationsRow, error) {
+	rows, err := q.db.Query(ctx, listUnfundedInvestmentCreations, arg.SpaceID, arg.FromTs, arg.ToTs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUnfundedInvestmentCreationsRow{}
+	for rows.Next() {
+		var i ListUnfundedInvestmentCreationsRow
+		if err := rows.Scan(
+			&i.QuoteCurrency,
+			&i.Quantity,
+			&i.AvgBuyPrice,
+			&i.Fees,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err

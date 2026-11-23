@@ -160,7 +160,7 @@ Frontend change only in the UI. One backend check: `GET /investments/grouped` mu
 - [x] Phase H: currency model and nullable estimated change (the 5.5% data migration part of H-T4 is blocked by Q6, see section 12)
 - [x] Phase I: wallet delete impact, list total (the multi-category filter already existed, C3)
 - [x] Phase J: single-item wrapper test
-- [ ] Phase K: growth history series (investments and assets, rising or falling per timeframe)
+- [x] Phase K: growth history series (investments and assets, rising or falling per timeframe)
 
 | Phase | Branch | Depends on | Size |
 | --- | --- | --- | --- |
@@ -250,7 +250,7 @@ Q9 default (until answered): a stale CMC price still counts in the total and is 
 - The snapshot job runs after the CMC refresh, not before (check the cron order: 00:15 UTC snapshot vs a 10 minute refresh, which is fine, but assert the snapshot uses market prices and not manual ones).
 - The live point and the stored points use the same currency (the space base currency at read time). Existing rule: history is returned in the current base currency.
 
-**Tasks.** K-T1 failing test for a series that only has `investments` today; K-T2 expose the snapshot components and `assets` on points; K-T3 `series` block with `direction`; K-T4 contributions for investments (trades) and fixed assets (purchases), `performancePct`; K-T5 `coverage`, `1W` and `YTD` ranges; K-T6 equality test with the Home and Assets totals; K-T7 swagger (with the known limit) and Appendix B if a code is added. Branch `feat/growth-history-series`, depends on Phase F (the contribution maths for net worth) and G (prices). Size M.
+**Tasks (all done, Nov 23, 2026).** K-T1 failing test for a series that only has `investments` today; K-T2 expose the snapshot components and `assets` on points; K-T3 `series` block with `direction`; K-T4 contributions for investments (trades) and fixed assets (purchases), `performancePct`; K-T5 `coverage`, `1W` and `YTD` ranges; K-T6 equality test with the Home and Assets totals; K-T7 swagger (with the known limit) and Appendix B if a code is added. Branch `feat/growth-history-series`, depends on Phase F (the contribution maths for net worth) and G (prices). Size M.
 
 New open question **Q11**: for `FLAT`, is a 0.05% band right, or should it be a setting? Planned default: 0.05%.
 
@@ -288,3 +288,16 @@ New open question **Q11**: for `FLAT`, is a 0.05% band right, or should it be a 
 - I-T4: `total` added to the transactions list envelope (count of all rows matching the filters, independent of the cursor and page size). It was missing (only `nextCursor`).
 
 **Nov 23, 2026, Phase J (`feat/wrapper-single-item-test`, stacked on `feat/wallet-delete-impact`).** J-T1 done: the new test (`test/e2e/wrapper_single_item_test.go`) passed on the first run, so `grouping.go` was not changed. Checked: one holding per wrapper and per category gives a `wrappers[]` entry with `count: 1` and its item (also with `items=false`), the single wrapper of a category has `pctOfCategory` 100.00, and a single unassigned holding is listed last as `_unassigned` / "Unassigned". `GET /assets/summary` has categories but no wrappers, so for it the test checks that every category with a single holding is listed.
+
+**Nov 23, 2026, Phase K (`feat/growth-history-series`, stacked on `feat/wrapper-single-item-test`, no migration).** K-T1 to K-T7 done. Q11 stays at the planned default (a 0.05% band, `networth.FlatBandPct`).
+- K-T1: failing test first (the history had only `netWorth` and `investments` per point and no verdict).
+- K-T2/T3: every point has `cash`, `investments`, `fixedAssets`, `receivables`, `liabilities` and `assets` (cash + investments + fixed assets + receivables); `series` has `netWorth`, `investments`, `fixedAssets`, `assets`, each with `first`, `last`, `change`, `changePct`, `netContributions`, `marketChange`, `performancePct` and `direction`. The server decides the direction. With one point only (a new space) the percentages are null and the direction is FLAT.
+- K-T4: how each contribution is defined where the plan said "from the trade records" or "purchases minus disposals" without a data source:
+  - investments: every BUY adds quantity x unit price + fee, every SELL takes out quantity x unit price - fee (the fee is a cost, never a gain), in the investment's quote currency, converted at the rate of the trade date. A holding added with no trade at all (no funding wallet) counts its cost (quantity x avg buy price + fees) at its creation date, otherwise it would show as a market gain.
+  - fixed assets: there are no purchase or disposal records, so a purchase is the first value row of the asset (from 0) and a disposal is the deletion of the asset (its last value). A later manual revaluation is market change.
+  - assets: wallet deposits (as in Phase F) plus the fixed-asset and unfunded-holding flows. Trades are left out on purpose: buying an investment moves cash into it, which is neutral for everything owned.
+  - net worth: the same flows as assets. **This differs from the plan text** ("adjustments, top ups and opening balances" only), because a fixed asset or a holding that is simply recorded would otherwise look like a market return. The top-level `netContributions`, `marketChange` and `performancePct` from Phase F are now identical to `series.netWorth`.
+  - Limits: money lent (receivables) and debts are not contributions, so they appear as market change. The window starts at the first point's day at 00:15 UTC and ends now.
+- K-T5: ranges `1W` and `YTD` added (invalid range message lists all seven); `coverage` has `firstPointDate`, `requestedFrom` (null for ALL) and `short`.
+- K-T6: the last (live) point equals the net-worth summary and the assets summary component by component, and the snapshot job stores the same market-priced values (tests added). The snapshot job already values with market prices (it goes through the same `Compute`).
+- K-T7: swagger text includes the known limit (history exists only from the first daily snapshot, nothing is backfilled). No new error code, so Appendix B is unchanged.

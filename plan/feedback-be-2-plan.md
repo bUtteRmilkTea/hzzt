@@ -159,7 +159,7 @@ Frontend change only in the UI. One backend check: `GET /investments/grouped` mu
 - [x] Phase G: crypto priced by CMC
 - [x] Phase H: currency model and nullable estimated change (the 5.5% data migration part of H-T4 is blocked by Q6, see section 12)
 - [x] Phase I: wallet delete impact, list total (the multi-category filter already existed, C3)
-- [ ] Phase J: single-item wrapper test
+- [x] Phase J: single-item wrapper test
 - [ ] Phase K: growth history series (investments and assets, rising or falling per timeframe)
 
 | Phase | Branch | Depends on | Size |
@@ -180,7 +180,7 @@ Order: F first (it fixes the numbers the user sees), then G, then H, then I and 
 
 **Phase I tasks (done, Nov 23, 2026; I-T3 dropped by C3).** I-T1 delete-impact endpoint; I-T2 delete guard; I-T3 `categoryIds`; I-T4 list `total` if missing.
 
-**Phase J tasks.** J-T1 test one holding per wrapper and category; fix only if it fails.
+**Phase J tasks (done, Nov 23, 2026).** J-T1 test one holding per wrapper and category; fix only if it fails.
 
 ## 8. Risks
 
@@ -286,3 +286,5 @@ New open question **Q11**: for `FLAT`, is a 0.05% band right, or should it be a 
 - I-T1: `GET /spaces/{spaceId}/wallets/{id}/delete-impact` returns `transactions` (every transaction row pointing at the wallet as source or destination, so it includes opening balances and transfers), `transfers` (own-wallet transfers among them, not trades or settlements), `goalReserves`, `balance` and `currency`. Transactions are hard-deleted rows in this schema, so "live rows only" is automatic.
 - I-T2 (C4, D-B7): folded into the existing `force` rule, no new `?confirm=` or header. `DELETE` without `force=true` is `422 WALLET_HAS_BALANCE` when the balance is not zero (unchanged), else `409 WALLET_HAS_TRANSACTIONS` with the counts in `details` when the wallet has any transaction. A wallet with no history still deletes without `force`.
 - I-T4: `total` added to the transactions list envelope (count of all rows matching the filters, independent of the cursor and page size). It was missing (only `nextCursor`).
+
+**Nov 23, 2026, Phase J (`feat/wrapper-single-item-test`, stacked on `feat/wallet-delete-impact`).** J-T1 done: the new test (`test/e2e/wrapper_single_item_test.go`) passed on the first run, so `grouping.go` was not changed. Checked: one holding per wrapper and per category gives a `wrappers[]` entry with `count: 1` and its item (also with `items=false`), the single wrapper of a category has `pctOfCategory` 100.00, and a single unassigned holding is listed last as `_unassigned` / "Unassigned". `GET /assets/summary` has categories but no wrappers, so for it the test checks that every category with a single holding is listed.

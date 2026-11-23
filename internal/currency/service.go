@@ -96,7 +96,16 @@ func (s *Service) Refresh(ctx context.Context) error {
 		if stored == 0 {
 			return errors.New("fx provider returned no usable rates")
 		}
-		s.opts.Log.Info().Int("rates", stored).Str("source", set.Source).Time("asOf", set.AsOf).Msg("fx rates refreshed")
+		// One provider call per run (USD base, every supported currency); cross rates are derived at convert time.
+		ev := s.opts.Log.Info().Int("rates", stored).Str("source", set.Source).Time("asOf", set.AsOf).Int("providerCalls", 1)
+		if qr, ok := s.opts.Provider.(QuotaReporter); ok {
+			if q, qerr := qr.Quota(ctx); qerr != nil {
+				s.opts.Log.Warn().Err(qerr).Msg("fx provider quota unavailable")
+			} else {
+				ev = ev.Int("quotaRemaining", q.Remaining).Int("quotaTotal", q.Total)
+			}
+		}
+		ev.Msg("fx rates refreshed")
 		return nil
 	})
 }

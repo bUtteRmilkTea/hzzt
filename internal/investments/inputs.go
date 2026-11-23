@@ -19,20 +19,21 @@ import (
 
 // Spec is the validated, normalized shape of an investment ready to be stored.
 type Spec struct {
-	AssetType                string
-	PriceMode                string
-	Name                     string
-	Symbol                   *string
-	Icon                     string
-	QuoteCurrency            string
-	Quantity                 decimal.Decimal
-	AvgBuyPrice              decimal.Decimal
-	ManualPrice              decimal.Decimal
-	Fees                     decimal.Decimal
-	ManualCurrentValue       *decimal.Decimal
-	ManualFxRate             *decimal.Decimal
-	PurchaseDate             *time.Time
-	EstimatedAnnualChangePct decimal.Decimal
+	AssetType          string
+	PriceMode          string
+	Name               string
+	Symbol             *string
+	Icon               string
+	QuoteCurrency      string
+	Quantity           decimal.Decimal
+	AvgBuyPrice        decimal.Decimal
+	ManualPrice        decimal.Decimal
+	Fees               decimal.Decimal
+	ManualCurrentValue *decimal.Decimal
+	ManualFxRate       *decimal.Decimal
+	PurchaseDate       *time.Time
+	// EstimatedAnnualChangePct is the user's own assumed yearly change; nil when never typed (no default).
+	EstimatedAnnualChangePct *decimal.Decimal
 	// Wrapper is the exchange, broker or platform the position is held on (grouping key); nil when unknown.
 	Wrapper *string
 	// Details is one of the *Details structs below.
@@ -422,10 +423,9 @@ func buildSpec(assetType, name string, b *base, quantity *decimal.Decimal, detai
 		QuoteCurrency: quoteCurrency(f, meta, b.QuoteCurrency, baseCurrency),
 		AvgBuyPrice:   dOrZero(b.AvgBuyPrice), ManualPrice: dOrZero(b.ManualPrice), Fees: dOrZero(b.Fees),
 		ManualCurrentValue: b.ManualCurrentValue, ManualFxRate: b.ManualFxRate,
-		PurchaseDate:             parseDate(f, "purchaseDate", b.PurchaseDate),
-		EstimatedAnnualChangePct: decimal.RequireFromString(DefaultEstimatedAnnualChangePct),
-		Details:                  details,
-		Wrapper:                  cleanWrapper(f, b.Wrapper),
+		PurchaseDate: parseDate(f, "purchaseDate", b.PurchaseDate),
+		Details:      details,
+		Wrapper:      cleanWrapper(f, b.Wrapper),
 	}
 	if b.PriceMode != nil {
 		if *b.PriceMode != PriceModeAuto && *b.PriceMode != PriceModeManual {
@@ -435,9 +435,7 @@ func buildSpec(assetType, name string, b *base, quantity *decimal.Decimal, detai
 	} else if meta.Defaults.PriceMode == PriceModeAuto {
 		s.PriceMode, s.AutoDefault = PriceModeAuto, true // D-B4: crypto is priced by the market unless told otherwise
 	}
-	if b.EstimatedAnnualChangePct != nil {
-		s.EstimatedAnnualChangePct = *b.EstimatedAnnualChangePct
-	}
+	s.EstimatedAnnualChangePct = b.EstimatedAnnualChangePct
 	if quantity != nil {
 		s.Quantity = *quantity
 	}
@@ -567,7 +565,7 @@ type PatchInput struct {
 	Fees                     *decimal.Decimal `json:"fees" swaggertype:"string"`
 	ManualCurrentValue       nullDec          `json:"manualCurrentValue" swaggertype:"string"`
 	PurchaseDate             nullStr          `json:"purchaseDate" swaggertype:"string"`
-	EstimatedAnnualChangePct *decimal.Decimal `json:"estimatedAnnualChangePct" swaggertype:"string"`
+	EstimatedAnnualChangePct nullDec          `json:"estimatedAnnualChangePct" swaggertype:"string"`
 	ManualFxRate             nullDec          `json:"manualFxRate" swaggertype:"string"`
 	// Wrapper sets the exchange, broker or platform holding the position; null re-derives it from details.
 	Wrapper nullStr `json:"wrapper" swaggertype:"string"`
@@ -586,7 +584,11 @@ func specFromRow(inv sqlc.Investment) (Spec, error) {
 		AssetType: inv.AssetType, PriceMode: inv.PriceMode, Name: inv.Name, Symbol: inv.Symbol, Icon: inv.Icon,
 		QuoteCurrency: strings.TrimSpace(inv.QuoteCurrency), Quantity: inv.Quantity, AvgBuyPrice: inv.AvgBuyPrice,
 		ManualPrice: inv.ManualPrice, Fees: inv.Fees, PurchaseDate: inv.PurchaseDate,
-		EstimatedAnnualChangePct: inv.EstimatedAnnualChangePct, Details: d, Wrapper: inv.Wrapper,
+		Details: d, Wrapper: inv.Wrapper,
+	}
+	if inv.EstimatedAnnualChangePct.Valid {
+		v := inv.EstimatedAnnualChangePct.Decimal
+		s.EstimatedAnnualChangePct = &v
 	}
 	if inv.ManualCurrentValue.Valid {
 		v := inv.ManualCurrentValue.Decimal
@@ -658,15 +660,15 @@ func (p PatchInput) apply(inv sqlc.Investment, baseCurrency string) (Spec, error
 	if p.PurchaseDate.Set {
 		s.PurchaseDate = parseDate(f, "purchaseDate", p.PurchaseDate.Value)
 	}
-	if p.EstimatedAnnualChangePct != nil {
-		s.EstimatedAnnualChangePct = *p.EstimatedAnnualChangePct
+	if p.EstimatedAnnualChangePct.Set {
+		s.EstimatedAnnualChangePct = p.EstimatedAnnualChangePct.Value // null clears it
 	}
 	checkDec(f, "avgBuyPrice", p.AvgBuyPrice, 8, false)
 	checkDec(f, "manualPrice", p.ManualPrice, 8, false)
 	checkDec(f, "fees", p.Fees, 8, false)
 	checkDec(f, "manualCurrentValue", p.ManualCurrentValue.Value, 8, false)
 	checkDec(f, "manualFxRate", p.ManualFxRate.Value, 12, true)
-	if v := p.EstimatedAnnualChangePct; v != nil {
+	if v := p.EstimatedAnnualChangePct.Value; v != nil {
 		if v.LessThan(decimal.NewFromInt(-100)) || v.GreaterThan(decimal.NewFromInt(1000)) {
 			f["estimatedAnnualChangePct"] = "must be between -100 and 1000"
 		} else if !v.Round(4).Equal(*v) {

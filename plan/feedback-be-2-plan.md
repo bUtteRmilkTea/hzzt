@@ -157,7 +157,7 @@ Frontend change only in the UI. One backend check: `GET /investments/grouped` mu
 **Progress** (ticked when the phase's branch passes lint/tests and is pushed with a PR):
 - [x] Phase F: ledger correctness (top up, reclassify, calendar net, net worth contributions, system keys, seeds)
 - [x] Phase G: crypto priced by CMC
-- [ ] Phase H: currency model and nullable estimated change
+- [x] Phase H: currency model and nullable estimated change (the 5.5% data migration part of H-T4 is blocked by Q6, see section 12)
 - [ ] Phase I: wallet delete impact, multi-category filter
 - [ ] Phase J: single-item wrapper test
 - [ ] Phase K: growth history series (investments and assets, rising or falling per timeframe)
@@ -176,7 +176,7 @@ Order: F first (it fixes the numbers the user sees), then G, then H, then I and 
 
 **Phase G tasks (all done, Nov 23, 2026).** G-T1 prove the cause with a test (default create is MANUAL); G-T2 auto-link on create; G-T3 fallback and warnings; G-T4 batched refresh check and credit logging; G-T5 stale handling; G-T6 one valuation path for summary, grouped, assets summary, net worth and snapshots, with the equality test; G-T7 backfill migration (after Q5); G-T8 swagger.
 
-**Phase H tasks.** H-T1 FX default test; H-T2 DTO fields; H-T3 quota and cross-rate check in the job; H-T4 nullable migration; H-T5 readers audit; H-T6 `valuedBy` docs.
+**Phase H tasks (done except the Q6 data migration, Nov 23, 2026).** H-T1 FX default test; H-T2 DTO fields; H-T3 quota and cross-rate check in the job; H-T4 nullable migration; H-T5 readers audit; H-T6 `valuedBy` docs.
 
 **Phase I tasks.** I-T1 delete-impact endpoint; I-T2 delete guard; I-T3 `categoryIds`; I-T4 list `total` if missing.
 
@@ -274,3 +274,10 @@ New open question **Q11**: for `FLAT`, is a 0.05% band right, or should it be a 
 - G-T7 (Q5 yes): migration 00019 flips only `price_mode` for live CRYPTO rows with an instrument and no manual current value; rows without an instrument are listed with `RAISE NOTICE`. The test asserts avg_buy_price, manual_price, fees, quantity and manual value are identical before and after. The down migration is a no-op (a flipped row cannot be told from one the user set to AUTO). On a copy of the dev database no row was flipped (4 MANUAL crypto without an instrument, 1 already AUTO).
 - Not done on purpose: the optional `GET /investments/{id}/price` endpoint (the list DTO already carries `priceSource`, `priceAsOf`, `isStale`).
 - Existing test helpers that need typed prices (`crypto()` in grouping tests) now send `priceMode: MANUAL`.
+
+**Nov 23, 2026, Phase H (`feat/fx-and-defaults`, stacked on `feat/crypto-cmc-pricing`, migration 00020).** H-T1 to H-T6 done, except the data part of H-T4.
+- H-T1/T2: the valuation already used the stored provider rate when `manualFxRate` is absent (the test passed before any change). New DTO fields `fxRate`, `fxSource` (`PROVIDER` or `MANUAL`) and `fxAsOf` (also on `valuation.base`); all null when the quote currency is the base currency or no rate exists. `quoteCurrency` already existed (C8). `manualFxRate` stays an override only while the space's automatic FX is off (existing behaviour and test: with auto FX on it is ignored). The plan text "optional override" was not widened to override auto FX, because that would change an existing, tested rule. Tell me if you want it to win in auto mode too.
+- H-T3 / C8: `Refresh` already makes one provider call and derives cross rates at convert time. The job runs every 6 hours (about 120 calls a month against the 5,000 free quota). Added a log line with `providerCalls` and, for freecurrencyapi, the remaining and total monthly quota from its `/status` endpoint (best effort).
+- H-T4 (D-B6): migration 00020 makes `estimated_annual_change_pct` nullable with no default. **Blocked by Q6 and not done:** turning untouched 5.5 rows into NULL. All existing rows keep their value (13 rows on the dev database, all exactly 5.5, which shows why Q6 matters: the data cannot tell a typed 5.5 from the old default). New rows store NULL when the field is absent. PATCH accepts `null` to clear it.
+- H-T5 audit (C9): the field is only stored and echoed. No goal, projection, net-worth or snapshot code reads it (searched `internal/`), so there is no reader to change; `manual_assets` was already nullable. Changed: create and patch inputs, the DTO, the type metadata (`defaults.estimatedAnnualChangePct` is now always null), the two queries, and the shared-investment row copy. `DefaultEstimatedAnnualChangePct` was removed.
+- H-T6 (decision for the implementer): `valuedBy` was not added. `valuation.priceSource` already has the same three values (`MARKET`, `MANUAL`, `MANUAL_VALUE`); the swagger comment now documents which value wins.

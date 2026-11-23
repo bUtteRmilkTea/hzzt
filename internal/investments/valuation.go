@@ -36,6 +36,9 @@ type BaseValues struct {
 	UnrealizedPL decimal.Decimal `json:"unrealizedPl" swaggertype:"string"`
 	// FxRate is the rate used: base-currency units per 1 quote-currency unit.
 	FxRate decimal.Decimal `json:"fxRate" swaggertype:"string" example:"16000"`
+	// FxSource is PROVIDER (the stored provider rate) or MANUAL (a typed rate); FxAsOf is the date of the provider rate.
+	FxSource string     `json:"fxSource" enums:"PROVIDER,MANUAL"`
+	FxAsOf   *time.Time `json:"fxAsOf"`
 }
 
 // MarshalJSON renders the amounts with the base currency's display decimals (IDR and JPY: none,
@@ -55,10 +58,12 @@ type Valuation struct {
 	// Currency is the quote currency of the native figures below (not serialised separately).
 	Currency string `json:"-"`
 
-	Price       decimal.Decimal `json:"price" swaggertype:"string"`
-	PriceSource string          `json:"priceSource" enums:"MARKET,MANUAL,MANUAL_VALUE"`
-	PriceAsOf   *time.Time      `json:"priceAsOf"`
-	IsStale     bool            `json:"isStale"`
+	Price decimal.Decimal `json:"price" swaggertype:"string"`
+	// PriceSource says which value wins, so a form can state it: MARKET (the market price, when priceMode is AUTO and one
+	// exists), MANUAL (manualPrice x quantity) or MANUAL_VALUE (manualCurrentValue, which beats quantity x price).
+	PriceSource string     `json:"priceSource" enums:"MARKET,MANUAL,MANUAL_VALUE"`
+	PriceAsOf   *time.Time `json:"priceAsOf"`
+	IsStale     bool       `json:"isStale"`
 
 	// Native figures, in the investment's quote currency.
 	MarketValue  decimal.Decimal `json:"marketValue" swaggertype:"string"`
@@ -185,7 +190,7 @@ func Value(inv sqlc.Investment, mp *MarketPrice, cc *currency.ConversionContext,
 	}
 
 	quote := strings.TrimSpace(inv.QuoteCurrency)
-	rate, err := conversionRate(inv, quote, cc)
+	rate, source, err := conversionRate(inv, quote, cc)
 	if err != nil {
 		v.Warnings = append(v.Warnings, currency.Warning{
 			Code: currency.CodeFXRateUnavailable, Label: inv.Name,
@@ -199,21 +204,39 @@ func Value(inv sqlc.Investment, mp *MarketPrice, cc *currency.ConversionContext,
 		CostBasis:    v.CostBasis.Mul(rate),
 		UnrealizedPL: v.UnrealizedPL.Mul(rate),
 		FxRate:       rate,
+		FxSource:     source,
+	}
+	if source == FxSourceProvider && !cc.AsOf.IsZero() {
+		asOf := cc.AsOf.UTC()
+		v.Base.FxAsOf = &asOf
 	}
 	return v
 }
 
 // conversionRate picks the quote→base rate for one investment.
-func conversionRate(inv sqlc.Investment, quote string, cc *currency.ConversionContext) (decimal.Decimal, error) {
+func conversionRate(inv sqlc.Investment, quote string, cc *currency.ConversionContext) (decimal.Decimal, string, error) {
 	base := strings.TrimSpace(cc.BaseCurrency)
 	if strings.EqualFold(quote, base) {
-		return decimal.NewFromInt(1), nil
+		return decimal.NewFromInt(1), FxSourceProvider, nil
 	}
 	if !cc.AutoFX && inv.ManualFxRate.Valid {
-		return inv.ManualFxRate.Decimal, nil // the per-investment override, only in manual FX mode
+		return inv.ManualFxRate.Decimal, FxSourceManual, nil // the per-investment override, only in manual FX mode
 	}
-	return cc.Rate(quote, base)
+	r, err := cc.Rate(quote, base)
+	if err != nil {
+		return decimal.Zero, "", err
+	}
+	if cc.AutoFX {
+		return r, FxSourceProvider, nil
+	}
+	return r, FxSourceManual, nil // the space's manual rate
 }
+
+// Where a conversion rate comes from.
+const (
+	FxSourceProvider = "PROVIDER"
+	FxSourceManual   = "MANUAL"
+)
 
 // Summary totals a portfolio in the base currency.
 type Summary struct {

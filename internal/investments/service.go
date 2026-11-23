@@ -345,7 +345,7 @@ func (s *Service) Create(ctx context.Context, spaceID, userID uuid.UUID, spec Sp
 			SpaceID: spaceID, AssetType: spec.AssetType, PriceMode: spec.PriceMode, Name: spec.Name, Symbol: spec.Symbol,
 			Icon: spec.Icon, QuoteCurrency: spec.QuoteCurrency, Quantity: spec.Quantity, AvgBuyPrice: spec.AvgBuyPrice,
 			ManualPrice: spec.ManualPrice, Fees: spec.Fees, ManualCurrentValue: toNullDecimal(spec.ManualCurrentValue),
-			PurchaseDate: spec.PurchaseDate, EstimatedAnnualChangePct: spec.EstimatedAnnualChangePct,
+			PurchaseDate: spec.PurchaseDate, EstimatedAnnualChangePct: toNullDecimal(spec.EstimatedAnnualChangePct),
 			ManualFxRate: toNullDecimal(spec.ManualFxRate), Details: details, CreatedByID: userID,
 			InstrumentID: instrument, Wrapper: spec.Wrapper,
 		})
@@ -551,7 +551,7 @@ func (s *Service) Update(ctx context.Context, space sqlc.Space, userID, id uuid.
 			ID: id, SpaceID: space.ID, PriceMode: spec.PriceMode, Name: spec.Name, Symbol: spec.Symbol, Icon: spec.Icon,
 			QuoteCurrency: spec.QuoteCurrency, Quantity: spec.Quantity, AvgBuyPrice: spec.AvgBuyPrice,
 			ManualPrice: spec.ManualPrice, Fees: spec.Fees, ManualCurrentValue: toNullDecimal(spec.ManualCurrentValue),
-			PurchaseDate: spec.PurchaseDate, EstimatedAnnualChangePct: spec.EstimatedAnnualChangePct,
+			PurchaseDate: spec.PurchaseDate, EstimatedAnnualChangePct: toNullDecimal(spec.EstimatedAnnualChangePct),
 			ManualFxRate: toNullDecimal(spec.ManualFxRate), Details: details, Wrapper: spec.Wrapper,
 		})
 		if err != nil {

@@ -156,3 +156,16 @@ func TestProviderHonoursContext(t *testing.T) {
 	_, err := NewFrankfurterProvider(srv.URL).Latest(ctx)
 	assert.Error(t, err)
 }
+
+func TestFreeCurrencyQuota(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/status", r.URL.Path)
+		assert.NotEmpty(t, r.Header.Get("apikey"))
+		_, _ = w.Write([]byte(`{"quotas":{"month":{"total":5000,"used":120,"remaining":4880},"grace":{"total":0,"used":0,"remaining":0}}}`))
+	}))
+	defer srv.Close()
+	var qr QuotaReporter = NewFreeCurrencyProvider(srv.URL, "test-key")
+	q, err := qr.Quota(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, Quota{Remaining: 4880, Total: 5000}, q)
+}

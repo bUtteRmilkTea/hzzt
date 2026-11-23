@@ -56,9 +56,6 @@ var (
 	errAutoNotSupported = apperror.Unprocessable(CodeAutoPriceNotSupported, "This asset type does not support automatic pricing")
 )
 
-// DefaultEstimatedAnnualChangePct is the default "estimated annual change".
-const DefaultEstimatedAnnualChangePct = "5.5"
-
 // FieldMeta describes one input field for dynamic forms.
 type FieldMeta struct {
 	Name     string   `json:"name" example:"stakedQuantity"`
@@ -86,9 +83,10 @@ type TypeMeta struct {
 
 // TypeDefaults are the defaults applied when a field is omitted.
 type TypeDefaults struct {
-	PriceMode                string `json:"priceMode"`
-	EstimatedAnnualChangePct string `json:"estimatedAnnualChangePct"`
-	Fees                     string `json:"fees"`
+	PriceMode string `json:"priceMode"`
+	// EstimatedAnnualChangePct is always null: there is no assumed return (the field is kept so clients can rely on it).
+	EstimatedAnnualChangePct *string `json:"estimatedAnnualChangePct"`
+	Fees                     string  `json:"fees"`
 }
 
 // FundTypes are the allowed mutual fund types.
@@ -147,7 +145,7 @@ var Metas = []TypeMeta{
 
 func init() {
 	for i := range Metas {
-		Metas[i].Defaults = TypeDefaults{PriceMode: PriceModeManual, EstimatedAnnualChangePct: DefaultEstimatedAnnualChangePct, Fees: "0"}
+		Metas[i].Defaults = TypeDefaults{PriceMode: PriceModeManual, Fees: "0"}
 		if Metas[i].AssetType == TypeCrypto { // D-B4: priced by the market unless the client says otherwise
 			Metas[i].Defaults.PriceMode = PriceModeAuto
 		}

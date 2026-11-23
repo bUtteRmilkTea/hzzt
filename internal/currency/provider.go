@@ -190,3 +190,35 @@ func (p *FreeCurrencyProvider) Latest(ctx context.Context) (RateSet, error) {
 	n := p.now().UTC()
 	return RateSet{AsOf: time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, time.UTC), Source: "freecurrencyapi", Rates: rates}, nil
 }
+
+// Quota is what is left of a provider's request allowance.
+type Quota struct {
+	Remaining int
+	Total     int
+}
+
+// QuotaReporter is implemented by providers that can say how much of their allowance is left.
+// Refresh logs it after each run (best effort, never an error).
+type QuotaReporter interface {
+	Quota(ctx context.Context) (Quota, error)
+}
+
+// Quota implements QuotaReporter through the /status endpoint, which does not use up the allowance.
+func (p *FreeCurrencyProvider) Quota(ctx context.Context) (Quota, error) {
+	body, err := p.http.get(ctx, p.BaseURL+"/status", map[string]string{"apikey": p.APIKey})
+	if err != nil {
+		return Quota{}, fmt.Errorf("freecurrencyapi: status: %w", err)
+	}
+	var resp struct {
+		Quotas struct {
+			Month struct {
+				Total     int `json:"total"`
+				Remaining int `json:"remaining"`
+			} `json:"month"`
+		} `json:"quotas"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return Quota{}, fmt.Errorf("freecurrencyapi: decode status: %w", err)
+	}
+	return Quota{Remaining: resp.Quotas.Month.Remaining, Total: resp.Quotas.Month.Total}, nil
+}

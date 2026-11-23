@@ -46,7 +46,7 @@ func TestCreateIDStockDerivesQuantityFromLots(t *testing.T) {
 	assert.Equal(t, "IDR", s.QuoteCurrency)
 	assert.Equal(t, "BBCA", *s.Symbol)
 	assert.Equal(t, PriceModeManual, s.PriceMode)
-	assert.True(t, d("5.5").Equal(s.EstimatedAnnualChangePct))
+	assert.Nil(t, s.EstimatedAnnualChangePct, "no assumed return")
 	assert.Equal(t, "🇮🇩", s.Icon)
 	assert.Equal(t, idStockDetails{Broker: strp("Stockbit"), Lots: i64p(2)}, s.Details)
 
@@ -192,7 +192,7 @@ func TestMetasMirrorTheInputs(t *testing.T) {
 		} else {
 			assert.Equal(t, PriceModeManual, m.Defaults.PriceMode)
 		}
-		assert.Equal(t, "5.5", m.Defaults.EstimatedAnnualChangePct)
+		assert.Nil(t, m.Defaults.EstimatedAnnualChangePct, "no assumed return")
 		// auto pricing is only advertised where creating AUTO works
 		_, err := buildSpec(m.AssetType, "n", &base{PriceMode: strp("AUTO"), Symbol: strp("S")}, dp("1"), validDetails(m.AssetType), "IDR")
 		if m.SupportsAutoPrice {
@@ -245,7 +245,7 @@ func rowFor(t *testing.T, body string) sqlc.Investment {
 	r := sqlc.Investment{
 		AssetType: s.AssetType, PriceMode: s.PriceMode, Name: s.Name, Symbol: s.Symbol, Icon: s.Icon,
 		QuoteCurrency: s.QuoteCurrency, Quantity: s.Quantity, AvgBuyPrice: s.AvgBuyPrice, ManualPrice: s.ManualPrice,
-		Fees: s.Fees, PurchaseDate: s.PurchaseDate, EstimatedAnnualChangePct: s.EstimatedAnnualChangePct, Details: details,
+		Fees: s.Fees, PurchaseDate: s.PurchaseDate, EstimatedAnnualChangePct: toNullDecimal(s.EstimatedAnnualChangePct), Details: details,
 	}
 	if s.ManualCurrentValue != nil {
 		r.ManualCurrentValue = nd(s.ManualCurrentValue.String())

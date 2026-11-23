@@ -19,9 +19,9 @@ INSERT INTO investments (
     manual_price, fees, manual_current_value, purchase_date, estimated_annual_change_pct,
     manual_fx_rate, details, created_by_id, instrument_id, wrapper
 ) VALUES (
-    $1, $2, $3, $4, $14, $5, $6, $7, $8,
-    $9, $10, $15, $16, $11,
-    $17, $12, $13, $18, $19
+    $1, $2, $3, $4, $13, $5, $6, $7, $8,
+    $9, $10, $14, $15, $16,
+    $17, $11, $12, $18, $19
 )
 RETURNING id, space_id, asset_type, price_mode, name, symbol, icon, quote_currency, quantity, avg_buy_price, manual_price, fees, manual_current_value, purchase_date, estimated_annual_change_pct, manual_fx_rate, details, instrument_id, is_shared, created_by_id, created_at, updated_at, deleted_at, wrapper
 `
@@ -37,12 +37,12 @@ type CreateInvestmentParams struct {
 	AvgBuyPrice              decimal.Decimal     `json:"avg_buy_price"`
 	ManualPrice              decimal.Decimal     `json:"manual_price"`
 	Fees                     decimal.Decimal     `json:"fees"`
-	EstimatedAnnualChangePct decimal.Decimal     `json:"estimated_annual_change_pct"`
 	Details                  []byte              `json:"details"`
 	CreatedByID              uuid.UUID           `json:"created_by_id"`
 	Symbol                   *string             `json:"symbol"`
 	ManualCurrentValue       decimal.NullDecimal `json:"manual_current_value"`
 	PurchaseDate             *time.Time          `json:"purchase_date"`
+	EstimatedAnnualChangePct decimal.NullDecimal `json:"estimated_annual_change_pct"`
 	ManualFxRate             decimal.NullDecimal `json:"manual_fx_rate"`
 	InstrumentID             uuid.NullUUID       `json:"instrument_id"`
 	Wrapper                  *string             `json:"wrapper"`
@@ -60,12 +60,12 @@ func (q *Queries) CreateInvestment(ctx context.Context, arg CreateInvestmentPara
 		arg.AvgBuyPrice,
 		arg.ManualPrice,
 		arg.Fees,
-		arg.EstimatedAnnualChangePct,
 		arg.Details,
 		arg.CreatedByID,
 		arg.Symbol,
 		arg.ManualCurrentValue,
 		arg.PurchaseDate,
+		arg.EstimatedAnnualChangePct,
 		arg.ManualFxRate,
 		arg.InstrumentID,
 		arg.Wrapper,
@@ -414,11 +414,11 @@ func (q *Queries) SoftDeleteInvestment(ctx context.Context, arg SoftDeleteInvest
 
 const updateInvestment = `-- name: UpdateInvestment :one
 UPDATE investments SET
-    price_mode = $3, name = $4, symbol = $13, icon = $5, quote_currency = $6,
+    price_mode = $3, name = $4, symbol = $12, icon = $5, quote_currency = $6,
     quantity = $7, avg_buy_price = $8, manual_price = $9, fees = $10,
-    manual_current_value = $14, purchase_date = $15,
-    estimated_annual_change_pct = $11, manual_fx_rate = $16,
-    details = $12, wrapper = $17, updated_at = now()
+    manual_current_value = $13, purchase_date = $14,
+    estimated_annual_change_pct = $15, manual_fx_rate = $16,
+    details = $11, wrapper = $17, updated_at = now()
 WHERE id = $1 AND space_id = $2 AND deleted_at IS NULL
 RETURNING id, space_id, asset_type, price_mode, name, symbol, icon, quote_currency, quantity, avg_buy_price, manual_price, fees, manual_current_value, purchase_date, estimated_annual_change_pct, manual_fx_rate, details, instrument_id, is_shared, created_by_id, created_at, updated_at, deleted_at, wrapper
 `
@@ -434,11 +434,11 @@ type UpdateInvestmentParams struct {
 	AvgBuyPrice              decimal.Decimal     `json:"avg_buy_price"`
 	ManualPrice              decimal.Decimal     `json:"manual_price"`
 	Fees                     decimal.Decimal     `json:"fees"`
-	EstimatedAnnualChangePct decimal.Decimal     `json:"estimated_annual_change_pct"`
 	Details                  []byte              `json:"details"`
 	Symbol                   *string             `json:"symbol"`
 	ManualCurrentValue       decimal.NullDecimal `json:"manual_current_value"`
 	PurchaseDate             *time.Time          `json:"purchase_date"`
+	EstimatedAnnualChangePct decimal.NullDecimal `json:"estimated_annual_change_pct"`
 	ManualFxRate             decimal.NullDecimal `json:"manual_fx_rate"`
 	Wrapper                  *string             `json:"wrapper"`
 }
@@ -456,11 +456,11 @@ func (q *Queries) UpdateInvestment(ctx context.Context, arg UpdateInvestmentPara
 		arg.AvgBuyPrice,
 		arg.ManualPrice,
 		arg.Fees,
-		arg.EstimatedAnnualChangePct,
 		arg.Details,
 		arg.Symbol,
 		arg.ManualCurrentValue,
 		arg.PurchaseDate,
+		arg.EstimatedAnnualChangePct,
 		arg.ManualFxRate,
 		arg.Wrapper,
 	)

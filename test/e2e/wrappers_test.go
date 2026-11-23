@@ -245,7 +245,7 @@ func TestConcurrentWrapperEditsCannotExceed100(t *testing.T) {
 		w := k
 		_, err := q.CreateInvestment(ctx, sqlc.CreateInvestmentParams{
 			SpaceID: spaceID, AssetType: "US_STOCK", PriceMode: "MANUAL", Name: "Stock " + k, Symbol: &w, Icon: "x", QuoteCurrency: "USD",
-			Quantity: dec("1"), AvgBuyPrice: dec("10"), ManualPrice: dec("10"), Fees: dec("0"), EstimatedAnnualChangePct: dec("5.5"),
+			Quantity: dec("1"), AvgBuyPrice: dec("10"), ManualPrice: dec("10"), Fees: dec("0"), EstimatedAnnualChangePct: nullDec("5.5"),
 			Details: []byte(`{"exchange":"NASDAQ"}`), CreatedByID: userID, Wrapper: &w,
 		})
 		require.NoError(t, err)

@@ -46,8 +46,11 @@ type investmentBody struct {
 	Fees                     string         `json:"fees"`
 	ManualCurrentValue       *string        `json:"manualCurrentValue"`
 	PurchaseDate             *string        `json:"purchaseDate"`
-	EstimatedAnnualChangePct string         `json:"estimatedAnnualChangePct"`
+	EstimatedAnnualChangePct *string        `json:"estimatedAnnualChangePct"`
 	ManualFxRate             *string        `json:"manualFxRate"`
+	FxRate                   *string        `json:"fxRate"`
+	FxSource                 *string        `json:"fxSource"`
+	FxAsOf                   *string        `json:"fxAsOf"`
 	Details                  map[string]any `json:"details"`
 	RealizedPL               struct {
 		Amount   string  `json:"amount"`
@@ -161,7 +164,10 @@ func TestInvestmentTypesEndpoint(t *testing.T) {
 		QuantityMode          string                                               `json:"quantityMode"`
 		LotSize               *int                                                 `json:"lotSize"`
 		SymbolRequired        bool                                                 `json:"symbolRequired"`
-		Defaults              struct{ PriceMode, EstimatedAnnualChangePct string } `json:"defaults"`
+		Defaults              struct {
+			PriceMode                string
+			EstimatedAnnualChangePct *string
+		} `json:"defaults"`
 		DetailFields          []struct {
 			Name     string   `json:"name"`
 			Required bool     `json:"required"`
@@ -191,7 +197,7 @@ func TestInvestmentTypesEndpoint(t *testing.T) {
 	assert.False(t, mf.SupportsAutoPrice)
 	assert.False(t, mf.SymbolRequired)
 	assert.Equal(t, "MANUAL", mf.Defaults.PriceMode)
-	assert.Equal(t, "5.5", mf.Defaults.EstimatedAnnualChangePct)
+	assert.Nil(t, mf.Defaults.EstimatedAnnualChangePct, "no assumed return")
 	for _, f := range mf.DetailFields {
 		if f.Name == "fundType" {
 			assert.True(t, f.Required)
@@ -212,7 +218,7 @@ func TestCreateEachInvestmentType(t *testing.T) {
 		assert.Equal(t, "IDR", got.QuoteCurrency)
 		assert.Equal(t, "BBCA", *got.Symbol)
 		assert.Equal(t, "MANUAL", got.PriceMode)
-		assert.True(t, dec("5.5").Equal(dec(got.EstimatedAnnualChangePct)))
+		assert.Nil(t, got.EstimatedAnnualChangePct, "not assumed")
 		assert.EqualValues(t, 2, got.Details["lots"])
 		assert.Equal(t, "Stockbit", got.Details["broker"])
 		assert.False(t, got.IsShared)
@@ -433,7 +439,8 @@ func TestInvestmentUpdateAndDelete(t *testing.T) {
 		res.JSON(t, &got)
 		assert.Equal(t, "BCA", got.Name)
 		assert.True(t, dec("9800").Equal(dec(got.ManualPrice)))
-		assert.True(t, dec("8.25").Equal(dec(got.EstimatedAnnualChangePct)))
+		require.NotNil(t, got.EstimatedAnnualChangePct)
+		assert.True(t, dec("8.25").Equal(dec(*got.EstimatedAnnualChangePct)))
 		assert.True(t, dec("200").Equal(dec(got.Quantity)))
 		assert.Equal(t, "BBCA", *got.Symbol)
 		assert.True(t, dec("200").Mul(dec("9800")).Equal(dec(got.Valuation.MarketValue)))

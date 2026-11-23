@@ -78,22 +78,30 @@ func (h *Handler) Mount(r chi.Router) {
 
 // InvestmentDTO is the public representation of an investment with its valuation.
 type InvestmentDTO struct {
-	ID                       uuid.UUID        `json:"id"`
-	AssetType                string           `json:"assetType" enums:"CRYPTO,ID_STOCK,US_STOCK,MUTUAL_FUND,GLOBAL_ETF"`
-	PriceMode                string           `json:"priceMode" enums:"AUTO,MANUAL"`
-	Name                     string           `json:"name"`
-	Symbol                   *string          `json:"symbol"`
-	Icon                     string           `json:"icon"`
-	QuoteCurrency            string           `json:"quoteCurrency" example:"IDR"`
-	Quantity                 decimal.Decimal  `json:"quantity" swaggertype:"string" example:"200"`
-	AvgBuyPrice              decimal.Decimal  `json:"avgBuyPrice" swaggertype:"string"`
-	ManualPrice              decimal.Decimal  `json:"manualPrice" swaggertype:"string"`
-	Fees                     decimal.Decimal  `json:"fees" swaggertype:"string"`
-	ManualCurrentValue       *decimal.Decimal `json:"manualCurrentValue" swaggertype:"string"`
-	PurchaseDate             *string          `json:"purchaseDate" example:"2026-01-31"`
-	EstimatedAnnualChangePct decimal.Decimal  `json:"estimatedAnnualChangePct" swaggertype:"string"`
-	ManualFxRate             *decimal.Decimal `json:"manualFxRate" swaggertype:"string"`
-	Details                  any              `json:"details" swaggertype:"object"`
+	ID                 uuid.UUID        `json:"id"`
+	AssetType          string           `json:"assetType" enums:"CRYPTO,ID_STOCK,US_STOCK,MUTUAL_FUND,GLOBAL_ETF"`
+	PriceMode          string           `json:"priceMode" enums:"AUTO,MANUAL"`
+	Name               string           `json:"name"`
+	Symbol             *string          `json:"symbol"`
+	Icon               string           `json:"icon"`
+	QuoteCurrency      string           `json:"quoteCurrency" example:"IDR"`
+	Quantity           decimal.Decimal  `json:"quantity" swaggertype:"string" example:"200"`
+	AvgBuyPrice        decimal.Decimal  `json:"avgBuyPrice" swaggertype:"string"`
+	ManualPrice        decimal.Decimal  `json:"manualPrice" swaggertype:"string"`
+	Fees               decimal.Decimal  `json:"fees" swaggertype:"string"`
+	ManualCurrentValue *decimal.Decimal `json:"manualCurrentValue" swaggertype:"string"`
+	PurchaseDate       *string          `json:"purchaseDate" example:"2026-01-31"`
+	// EstimatedAnnualChangePct is the user's own assumed yearly change in percent; null when never set (there is no default).
+	EstimatedAnnualChangePct *decimal.Decimal `json:"estimatedAnnualChangePct" swaggertype:"string"`
+	// ManualFxRate is an optional per-investment override, used only when the space's automatic FX is off.
+	ManualFxRate *decimal.Decimal `json:"manualFxRate" swaggertype:"string"`
+	// FxRate, FxSource and FxAsOf describe the quote-to-base rate behind valuation.base: the rate used (base units per 1 quote
+	// unit), whether it came from the rate provider (PROVIDER) or was typed (MANUAL), and the date of the provider rate.
+	// All null when the quote currency is the space base currency or no rate is available.
+	FxRate   *decimal.Decimal `json:"fxRate" swaggertype:"string" example:"16000"`
+	FxSource *string          `json:"fxSource" enums:"PROVIDER,MANUAL"`
+	FxAsOf   *time.Time       `json:"fxAsOf"`
+	Details  any              `json:"details" swaggertype:"object"`
 	// Wrapper is the exchange, broker or platform the position is held on; null when unknown.
 	Wrapper      *string    `json:"wrapper" example:"Binance"`
 	InstrumentID *uuid.UUID `json:"instrumentId"`
@@ -153,7 +161,7 @@ func toDTO(it Item) InvestmentDTO {
 	d := InvestmentDTO{
 		ID: i.ID, AssetType: i.AssetType, PriceMode: i.PriceMode, Name: i.Name, Symbol: i.Symbol, Icon: i.Icon,
 		QuoteCurrency: strings.TrimSpace(i.QuoteCurrency), Quantity: i.Quantity, AvgBuyPrice: i.AvgBuyPrice,
-		ManualPrice: i.ManualPrice, Fees: i.Fees, EstimatedAnnualChangePct: i.EstimatedAnnualChangePct,
+		ManualPrice: i.ManualPrice, Fees: i.Fees,
 		Details: it.Details, Wrapper: i.Wrapper, IsShared: i.IsShared, Valuation: it.Valuation, TotalValuation: it.TotalValuation,
 		Ownership: it.Ownership, MyShareBps: it.MyShareBps, Participants: toParticipantDTOs(it.Participants),
 		RealizedPL: RealizedPLDTO{
@@ -166,9 +174,19 @@ func toDTO(it Item) InvestmentDTO {
 		v := i.ManualCurrentValue.Decimal
 		d.ManualCurrentValue = &v
 	}
+	if i.EstimatedAnnualChangePct.Valid {
+		v := i.EstimatedAnnualChangePct.Decimal
+		d.EstimatedAnnualChangePct = &v
+	}
 	if i.ManualFxRate.Valid {
 		v := i.ManualFxRate.Decimal
 		d.ManualFxRate = &v
+	}
+	// The rate behind the base-currency figures; null when the quote currency is the base currency
+	// (no conversion) or no rate was available.
+	if b := it.Valuation.Base; b != nil && !strings.EqualFold(strings.TrimSpace(i.QuoteCurrency), b.Currency) {
+		rate, src := b.FxRate, b.FxSource
+		d.FxRate, d.FxSource, d.FxAsOf = &rate, &src, b.FxAsOf
 	}
 	if i.PurchaseDate != nil {
 		s := i.PurchaseDate.Format("2006-01-02")

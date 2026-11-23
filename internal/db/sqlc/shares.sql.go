@@ -458,7 +458,7 @@ type ListSharedInInvestmentsRow struct {
 	Fees                     decimal.Decimal     `json:"fees"`
 	ManualCurrentValue       decimal.NullDecimal `json:"manual_current_value"`
 	PurchaseDate             *time.Time          `json:"purchase_date"`
-	EstimatedAnnualChangePct decimal.Decimal     `json:"estimated_annual_change_pct"`
+	EstimatedAnnualChangePct decimal.NullDecimal `json:"estimated_annual_change_pct"`
 	ManualFxRate             decimal.NullDecimal `json:"manual_fx_rate"`
 	Details                  []byte              `json:"details"`
 	InstrumentID             uuid.NullUUID       `json:"instrument_id"`

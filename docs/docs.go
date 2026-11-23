@@ -6223,10 +6223,21 @@ const docTemplate = `{
                     "type": "string",
                     "example": "IDR"
                 },
+                "fxAsOf": {
+                    "type": "string"
+                },
                 "fxRate": {
                     "description": "FxRate is the rate used: base-currency units per 1 quote-currency unit.",
                     "type": "string",
                     "example": "16000"
+                },
+                "fxSource": {
+                    "description": "FxSource is PROVIDER (the stored provider rate) or MANUAL (a typed rate); FxAsOf is the date of the provider rate.",
+                    "type": "string",
+                    "enum": [
+                        "PROVIDER",
+                        "MANUAL"
+                    ]
                 },
                 "marketValue": {
                     "type": "string"
@@ -6504,10 +6515,26 @@ const docTemplate = `{
                     "type": "object"
                 },
                 "estimatedAnnualChangePct": {
+                    "description": "EstimatedAnnualChangePct is the user's own assumed yearly change in percent; null when never set (there is no default).",
                     "type": "string"
                 },
                 "fees": {
                     "type": "string"
+                },
+                "fxAsOf": {
+                    "type": "string"
+                },
+                "fxRate": {
+                    "description": "FxRate, FxSource and FxAsOf describe the quote-to-base rate behind valuation.base: the rate used (base units per 1 quote\nunit), whether it came from the rate provider (PROVIDER) or was typed (MANUAL), and the date of the provider rate.\nAll null when the quote currency is the space base currency or no rate is available.",
+                    "type": "string",
+                    "example": "16000"
+                },
+                "fxSource": {
+                    "type": "string",
+                    "enum": [
+                        "PROVIDER",
+                        "MANUAL"
+                    ]
                 },
                 "icon": {
                     "type": "string"
@@ -6525,6 +6552,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "manualFxRate": {
+                    "description": "ManualFxRate is an optional per-investment override, used only when the space's automatic FX is off.",
                     "type": "string"
                 },
                 "manualPrice": {
@@ -6962,6 +6990,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "estimatedAnnualChangePct": {
+                    "description": "EstimatedAnnualChangePct is always null: there is no assumed return (the field is kept so clients can rely on it).",
                     "type": "string"
                 },
                 "fees": {
@@ -7047,6 +7076,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "priceSource": {
+                    "description": "PriceSource says which value wins, so a form can state it: MARKET (the market price, when priceMode is AUTO and one\nexists), MANUAL (manualPrice x quantity) or MANUAL_VALUE (manualCurrentValue, which beats quantity x price).",
                     "type": "string",
                     "enum": [
                         "MARKET",

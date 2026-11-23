@@ -265,17 +265,17 @@ func TestCreateEachInvestmentType(t *testing.T) {
 	t.Run("validation (400) and unauthenticated", func(t *testing.T) {
 		assert.Equal(t, http.StatusUnauthorized, s.Do(http.MethodPost, invURL(e.sid), bbca).Status)
 		for name, body := range map[string]map[string]any{
-			"unknown type":      {"assetType": "BOND", "name": "x"},
-			"no type":           {"name": "x"},
-			"no lots":           clone(bbca, "details", map[string]any{}),
-			"staked > qty":      {"assetType": "CRYPTO", "name": "B", "symbol": "BTC", "quantity": "1", "details": map[string]any{"stakedQuantity": "2"}},
-			"negative price":    clone(aapl, "manualPrice", "-1"),
-			"wrong quote":       clone(aapl, "quoteCurrency", "IDR"),
-			"no exchange":       clone(aapl, "details", map[string]any{}),
-			"fractional lots":   clone(bbca, "details", map[string]any{"lots": 1.5}),
-			"unknown field":     clone(aapl, "ownershipPct", 50),
-			"bad fund type":     {"assetType": "MUTUAL_FUND", "name": "F", "quantity": "1", "details": map[string]any{"fundType": "BOND"}},
-			"too many decimals": clone(aapl, "avgBuyPrice", "1.123456789"),
+			"unknown type":          {"assetType": "BOND", "name": "x"},
+			"no type":               {"name": "x"},
+			"no lots":               clone(bbca, "details", map[string]any{}),
+			"staked > qty":          {"assetType": "CRYPTO", "name": "B", "symbol": "BTC", "quantity": "1", "details": map[string]any{"stakedQuantity": "2"}},
+			"negative price":        clone(aapl, "manualPrice", "-1"),
+			"wrong quote":           clone(aapl, "quoteCurrency", "IDR"),
+			"no exchange":           clone(aapl, "details", map[string]any{}),
+			"lots beyond 1 decimal": clone(bbca, "details", map[string]any{"lots": 1.55}),
+			"unknown field":         clone(aapl, "ownershipPct", 50),
+			"bad fund type":         {"assetType": "MUTUAL_FUND", "name": "F", "quantity": "1", "details": map[string]any{"fundType": "BOND"}},
+			"too many decimals":     clone(aapl, "avgBuyPrice", "1.123456789"),
 		} {
 			res := e.post(body)
 			assert.Equal(t, http.StatusBadRequest, res.Status, "%s: %s", name, res.Body)

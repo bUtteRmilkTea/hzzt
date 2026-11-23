@@ -240,7 +240,7 @@ func TestSellRules(t *testing.T) {
 	e.assertPosition(e.btc.ID, "2", "50000", "20")
 
 	t.Run("cannot sell more than the quantity", func(t *testing.T) {
-		res := e.sell(e.a, e.btc.ID, "2.000000000000000001", "1", "")
+		res := e.sell(e.a, e.btc.ID, "2.00000001", "1", "")
 		require.Equal(t, http.StatusUnprocessableEntity, res.Status, string(res.Body))
 		assert.Equal(t, "INSUFFICIENT_QUANTITY", errCode(t, res))
 		var er struct {
@@ -569,12 +569,22 @@ func TestIDStockTradesMoveWholeLots(t *testing.T) {
 		assert.EqualValues(t, 5, e.inv.get(stock.ID).Details["lots"], "deleting restores the lots too")
 	})
 
-	t.Run("fractions of a lot are refused", func(t *testing.T) {
-		for _, qty := range []string{"50", "150", "100.5"} {
+	t.Run("a tenth of a lot (10 shares) is allowed, a hundredth is not", func(t *testing.T) {
+		before := dec(e.inv.get(stock.ID).Quantity)
+		got := e.mustTrade(e.buy(e.idr, stock.ID, "50", "9000", ""))
+		now := e.inv.get(stock.ID)
+		assert.True(t, before.Add(dec("50")).Equal(dec(now.Quantity)), "0.5 lot = 50 shares")
+		assert.EqualValues(t, 5.5, now.Details["lots"])
+		require.Equal(t, http.StatusNoContent, e.deleteTrade(got.ID).Status)
+		assert.EqualValues(t, 5, e.inv.get(stock.ID).Details["lots"])
+	})
+
+	t.Run("fractions of a lot beyond one decimal are refused", func(t *testing.T) {
+		for _, qty := range []string{"55", "105", "100.5"} {
 			res := e.buy(e.idr, stock.ID, qty, "9000", "")
 			require.Equal(t, http.StatusBadRequest, res.Status, qty)
 		}
-		res := e.sell(e.idr, stock.ID, "50", "9000", "")
+		res := e.sell(e.idr, stock.ID, "55", "9000", "")
 		assert.Equal(t, http.StatusBadRequest, res.Status)
 	})
 }

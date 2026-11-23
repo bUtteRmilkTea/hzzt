@@ -287,6 +287,27 @@ func (q *Queries) UpdateWallet(ctx context.Context, arg UpdateWalletParams) (Wal
 	return i, err
 }
 
+const walletDeleteImpact = `-- name: WalletDeleteImpact :one
+SELECT count(*)::int AS transactions,
+       (count(*) FILTER (WHERE type = 'TRANSFER' AND to_wallet_id IS NOT NULL AND investment_id IS NULL AND manual_asset_id IS NULL))::int AS transfers
+FROM transactions
+WHERE wallet_id = $1 OR to_wallet_id = $1
+`
+
+type WalletDeleteImpactRow struct {
+	Transactions int32 `json:"transactions"`
+	Transfers    int32 `json:"transfers"`
+}
+
+// What a wallet delete leaves behind: every transaction row that points at the wallet (as source or
+// destination), of which the transfers between own wallets. Transactions are hard-deleted rows, so all are live.
+func (q *Queries) WalletDeleteImpact(ctx context.Context, walletID uuid.NullUUID) (WalletDeleteImpactRow, error) {
+	row := q.db.QueryRow(ctx, walletDeleteImpact, walletID)
+	var i WalletDeleteImpactRow
+	err := row.Scan(&i.Transactions, &i.Transfers)
+	return i, err
+}
+
 const walletHasTransactions = `-- name: WalletHasTransactions :one
 SELECT EXISTS (
     SELECT 1 FROM transactions WHERE wallet_id = $1 OR to_wallet_id = $1

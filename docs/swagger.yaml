@@ -1928,6 +1928,11 @@ definitions:
         type: array
       nextCursor:
         type: string
+      total:
+        description: Total is how many transactions match the filters in all pages
+          (not just this one).
+        example: 42
+        type: integer
     type: object
   transactions.ManualAssetRef:
     properties:
@@ -2242,6 +2247,29 @@ definitions:
         type: string
       templateId:
         type: string
+    type: object
+  wallets.DeleteImpactDTO:
+    properties:
+      balance:
+        example: "134.26"
+        type: string
+      currency:
+        example: USD
+        type: string
+      goalReserves:
+        description: GoalReserves is the number of goal reservations that are removed
+          with the wallet.
+        example: 1
+        type: integer
+      transactions:
+        description: |-
+          Transactions counts every transaction that points at the wallet (the history that stays behind); Transfers is how many
+          of them are transfers to or from another of the space's wallets.
+        example: 12
+        type: integer
+      transfers:
+        example: 3
+        type: integer
     type: object
   wallets.DisplayPrefs:
     properties:
@@ -5685,7 +5713,7 @@ paths:
         name: id
         required: true
         type: string
-      - description: Required when the balance is not zero
+      - description: Required when the balance is not zero or the wallet has transactions
         in: query
         name: force
         type: boolean
@@ -5694,6 +5722,11 @@ paths:
           description: No Content
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorEnvelope'
+        "409":
+          description: 'WALLET_HAS_TRANSACTIONS (details: transactions, transfers,
+            goalReserves)'
           schema:
             $ref: '#/definitions/httpx.ErrorEnvelope'
         "422":
@@ -5820,6 +5853,38 @@ paths:
       security:
       - BearerAuth: []
       summary: Set the wallet balance
+      tags:
+      - wallets
+  /spaces/{spaceId}/wallets/{id}/delete-impact:
+    get:
+      description: Counts the wallet's transactions (as source or destination), the
+        transfers among them and the goal reservations that go with it, plus its balance.
+        DELETE needs force=true when the balance is not zero or the wallet has transactions.
+      parameters:
+      - description: Space ID
+        in: path
+        name: spaceId
+        required: true
+        type: string
+      - description: Wallet ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/wallets.DeleteImpactDTO'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorEnvelope'
+      security:
+      - BearerAuth: []
+      summary: What deleting a wallet affects
       tags:
       - wallets
   /spaces/{spaceId}/wallets/{id}/display-prefs:

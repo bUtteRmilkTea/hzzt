@@ -85,6 +85,29 @@ WHERE t.space_id = $1
 ORDER BY t.occurred_at DESC, t.id DESC
 LIMIT sqlc.arg('row_limit')::int;
 
+-- name: CountTransactions :one
+-- Same filters as ListTransactions, without the cursor and the limit.
+SELECT count(*)::int
+FROM transactions t
+LEFT JOIN wallets w     ON w.id = t.wallet_id
+LEFT JOIN wallets tw    ON tw.id = t.to_wallet_id
+LEFT JOIN categories c  ON c.id = t.category_id
+LEFT JOIN investments inv ON inv.id = t.investment_id
+LEFT JOIN manual_assets ma ON ma.id = t.manual_asset_id
+WHERE t.space_id = $1
+  AND (sqlc.narg('from_ts')::timestamptz IS NULL OR t.occurred_at >= sqlc.narg('from_ts'))
+  AND (sqlc.narg('to_ts')::timestamptz IS NULL OR t.occurred_at < sqlc.narg('to_ts'))
+  AND (sqlc.narg('types')::text[] IS NULL OR t.type = ANY(sqlc.narg('types')::text[]))
+  AND (sqlc.narg('category_ids')::uuid[] IS NULL OR t.category_id = ANY(sqlc.narg('category_ids')::uuid[]))
+  AND (sqlc.narg('wallet_ids')::uuid[] IS NULL
+       OR t.wallet_id = ANY(sqlc.narg('wallet_ids')::uuid[])
+       OR t.to_wallet_id = ANY(sqlc.narg('wallet_ids')::uuid[]))
+  AND (sqlc.narg('q')::text IS NULL
+       OR t.title ILIKE sqlc.narg('q') OR t.note ILIKE sqlc.narg('q')
+       OR c.name ILIKE sqlc.narg('q') OR w.name ILIKE sqlc.narg('q') OR tw.name ILIKE sqlc.narg('q')
+       OR inv.name ILIKE sqlc.narg('q') OR inv.symbol ILIKE sqlc.narg('q')
+       OR ma.name ILIKE sqlc.narg('q') OR ma.counterparty_name ILIKE sqlc.narg('q'));
+
 -- name: DailySummaryRows :many
 SELECT (t.occurred_at AT TIME ZONE sqlc.arg('tz')::text)::date AS day,
        t.type, t.currency,

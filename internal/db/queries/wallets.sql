@@ -43,3 +43,11 @@ UPDATE wallets SET sort_order = $3, updated_at = now() WHERE id = $1 AND space_i
 SELECT EXISTS (
     SELECT 1 FROM transactions WHERE wallet_id = $1 OR to_wallet_id = $1
 );
+
+-- name: WalletDeleteImpact :one
+-- What a wallet delete leaves behind: every transaction row that points at the wallet (as source or
+-- destination), of which the transfers between own wallets. Transactions are hard-deleted rows, so all are live.
+SELECT count(*)::int AS transactions,
+       (count(*) FILTER (WHERE type = 'TRANSFER' AND to_wallet_id IS NOT NULL AND investment_id IS NULL AND manual_asset_id IS NULL))::int AS transfers
+FROM transactions
+WHERE wallet_id = $1 OR to_wallet_id = $1;

@@ -422,6 +422,8 @@ func nilIfEmpty[T any](s []T) []T {
 type ListResult struct {
 	Items      []Detail
 	NextCursor string
+	// Total is how many transactions match the filters in all, ignoring the cursor and the page size.
+	Total int
 }
 
 // List returns transactions newest first (occurred_at desc, id desc) with keyset pagination.
@@ -443,7 +445,14 @@ func (s *Service) List(ctx context.Context, spaceID uuid.UUID, f Filter, cursor 
 	if err != nil {
 		return ListResult{}, err
 	}
-	res := ListResult{Items: make([]Detail, 0, len(rows))}
+	total, err := s.q.CountTransactions(ctx, sqlc.CountTransactionsParams{
+		SpaceID: spaceID, FromTs: f.Range.From, ToTs: f.Range.To, Types: nilIfEmpty(f.Types),
+		CategoryIds: nilIfEmpty(f.CategoryIDs), WalletIds: nilIfEmpty(f.WalletIDs), Q: likePattern(f.Q),
+	})
+	if err != nil {
+		return ListResult{}, err
+	}
+	res := ListResult{Items: make([]Detail, 0, len(rows)), Total: int(total)}
 	if len(rows) > limit {
 		rows = rows[:limit]
 		last := rows[limit-1]

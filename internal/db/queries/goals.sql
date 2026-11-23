@@ -64,3 +64,6 @@ SELECT COALESCE(sum(a.amount), 0)::numeric(28,8)
 FROM goal_allocations a
 JOIN goals g ON g.id = a.goal_id AND g.deleted_at IS NULL
 WHERE a.wallet_id = $1 AND a.goal_id <> $2;
+
+-- name: CountAllocationsForWallet :one
+SELECT count(*)::int FROM goal_allocations WHERE wallet_id = $1;

@@ -172,7 +172,11 @@ func newTestServer(t *testing.T, limits auth.Limits, userLimits users.Limits, in
 	usersSvc := users.NewService(tx, users.Options{Now: clock.Now})
 	usersSvc.Subscribe(bus)
 	usersHandler := users.NewHandler(usersSvc, svc, userLimits)
-	fx := &FakeFX{Set: defaultRates(clock)}
+	fx := &FakeFX{Set: defaultRates(clock), Clock: clock}
+	// Moving the clock back re-dates FX rates that are dated after the new "now".
+	clock.onSet = func(now time.Time) {
+		_, _ = tx.Exec(context.Background(), `UPDATE fx_rates SET as_of = $1 WHERE as_of > $1`, now.UTC().Truncate(24*time.Hour))
+	}
 	currencySvc := currency.NewService(tx, currency.Options{Provider: fx, Log: log, Now: clock.Now})
 	currencyHandler := currency.NewHandler(currencySvc, svc, spacesSvc)
 	categoriesSvc := categories.NewService(tx, currencySvc)
@@ -277,6 +281,8 @@ func (s *TestServer) Get(path string, headers ...[2]string) Response {
 type testClock struct {
 	mu     sync.Mutex
 	offset time.Duration
+	// onSet runs after Set, so the harness can re-date data in the new "future".
+	onSet func(now time.Time)
 }
 
 func (c *testClock) Now() time.Time {
@@ -290,6 +296,9 @@ func (c *testClock) Set(t time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.offset = time.Until(t)
+	if c.onSet != nil {
+		c.onSet(t)
+	}
 }
 
 // Advance moves the clock forward.

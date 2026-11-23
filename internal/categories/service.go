@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,6 +30,7 @@ const (
 // Error codes owned by this package (see plan Appendix B).
 const (
 	CodeCategoryNameTaken  = "CATEGORY_NAME_TAKEN"
+	CodeExistsSimilar      = "CATEGORY_EXISTS_SIMILAR"
 	CodeBudgetNotAllowed   = "BUDGET_NOT_ALLOWED"
 	CodeCategoryTypeLocked = "CATEGORY_TYPE_LOCKED"
 	CodeCategoryNotFound   = "CATEGORY_NOT_FOUND"
@@ -40,6 +42,33 @@ var (
 	errTypeLocked  = apperror.Unprocessable(CodeCategoryTypeLocked, "The type cannot change once transactions use this category")
 	errCategoryNF  = apperror.New(404, CodeCategoryNotFound, "Category not found")
 )
+
+func errExistsSimilar(existing sqlc.Category) error {
+	return apperror.Conflict(CodeExistsSimilar, "A category with the same meaning already exists").
+		WithDetails(map[string]any{"existingId": existing.ID, "existingName": existing.Name})
+}
+
+// similar returns a live category of the same type whose name means the same as name (they are
+// aliases of one default category, such as Gaji and Salary), other than `except`.
+func similar(ctx context.Context, q *sqlc.Queries, spaceID uuid.UUID, typ, name string, except uuid.UUID) (*sqlc.Category, error) {
+	group := aliasGroup(name)
+	if group == "" {
+		return nil, nil
+	}
+	rows, err := q.ListCategories(ctx, sqlc.ListCategoriesParams{SpaceID: spaceID, Type: &typ})
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range rows {
+		if c.ID == except {
+			continue
+		}
+		if (c.SystemKey != nil && *c.SystemKey == group) || aliasGroup(c.Name) == group {
+			return &c, nil
+		}
+	}
+	return nil, nil
+}
 
 // DB is what the service needs; *pgxpool.Pool and pgx.Tx both satisfy it.
 type DB interface {
@@ -92,6 +121,8 @@ func (s *Service) List(ctx context.Context, spaceID uuid.UUID, typ string) ([]sq
 type CreateInput struct {
 	Type, Name, Icon, Color string
 	Budget                  *decimal.Decimal
+	// Force skips the CATEGORY_EXISTS_SIMILAR check (an exact duplicate is still refused).
+	Force bool
 }
 
 // Create appends a category at the end of its type's order.
@@ -102,6 +133,13 @@ func (s *Service) Create(ctx context.Context, spaceID, userID uuid.UUID, in Crea
 	var out sqlc.Category
 	err := db.WithTx(ctx, s.db, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
+		if !in.Force {
+			if c, err := similar(ctx, q, spaceID, in.Type, in.Name, uuid.Nil); err != nil {
+				return err
+			} else if c != nil && !strings.EqualFold(strings.TrimSpace(c.Name), strings.TrimSpace(in.Name)) {
+				return errExistsSimilar(*c)
+			}
+		}
 		next, err := q.NextCategorySortOrder(ctx, sqlc.NextCategorySortOrderParams{SpaceID: spaceID, Type: in.Type})
 		if err != nil {
 			return err
@@ -140,6 +178,7 @@ type UpdateInput struct {
 	Type, Name, Icon, Color *string
 	BudgetSet               bool             // budgetAmount was present in the body
 	Budget                  *decimal.Decimal // nil with BudgetSet clears the budget
+	Force                   bool             // skip the CATEGORY_EXISTS_SIMILAR check
 }
 
 // Update applies a partial update.
@@ -164,6 +203,17 @@ func (s *Service) Update(ctx context.Context, spaceID, id uuid.UUID, in UpdateIn
 				return errTypeLocked
 			}
 			finalType = *in.Type
+		}
+		if !in.Force && (in.Name != nil || finalType != cur.Type) {
+			name := cur.Name
+			if in.Name != nil {
+				name = *in.Name
+			}
+			if c, err := similar(ctx, q, spaceID, finalType, name, id); err != nil {
+				return err
+			} else if c != nil && !strings.EqualFold(strings.TrimSpace(c.Name), strings.TrimSpace(name)) {
+				return errExistsSimilar(*c)
+			}
 		}
 		p := sqlc.UpdateCategoryParams{
 			ID: id, SpaceID: spaceID, Type: in.Type, Name: in.Name, Icon: in.Icon, Color: in.Color,

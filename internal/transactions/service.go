@@ -28,6 +28,7 @@ const (
 	CodeTransactionNotFound  = "TRANSACTION_NOT_FOUND"
 	CodeCategoryTypeMismatch = "CATEGORY_TYPE_MISMATCH"
 	CodeUseSpecificEndpoint  = "USE_SPECIFIC_ENDPOINT"
+	CodeTypeChangeNotAllowed = "TYPE_CHANGE_NOT_ALLOWED"
 	codeWalletNotFound       = "WALLET_NOT_FOUND"
 	codeCategoryNotFound     = "CATEGORY_NOT_FOUND"
 )
@@ -38,6 +39,10 @@ var (
 	errCategoryNF   = apperror.New(404, codeCategoryNotFound, "Category not found")
 	errTypeMismatch = apperror.Unprocessable(CodeCategoryTypeMismatch, "The category type does not match the transaction type")
 )
+
+func typeChangeNotAllowed(msg string) error {
+	return apperror.Unprocessable(CodeTypeChangeNotAllowed, msg)
+}
 
 func useSpecific(what string) error {
 	return apperror.Unprocessable(CodeUseSpecificEndpoint, what+" transactions are managed through their own endpoint")
@@ -158,12 +163,39 @@ func (s *Service) Create(ctx context.Context, spaceID, userID uuid.UUID, in Crea
 	return s.Get(ctx, spaceID, id)
 }
 
-// TopUp adds money to a wallet as an INCOME without a category.
+// System keys of the transactions the backend writes itself (see sqlc transactions.system_key).
+const (
+	SystemKeyOpeningBalance    = "OPENING_BALANCE"
+	SystemKeyBalanceTopUp      = "BALANCE_TOP_UP"
+	SystemKeyBalanceAdjustment = "BALANCE_ADJUSTMENT"
+)
+
+// TopUp adds money to a wallet. It is an ADJUSTMENT IN without a category, not an
+// INCOME: money put into a wallet is not earnings, so it never reaches the income totals.
 func (s *Service) TopUp(ctx context.Context, spaceID, userID, walletID uuid.UUID, amount decimal.Decimal, note *string) (Detail, error) {
-	title := "Balance top up"
-	return s.Create(ctx, spaceID, userID, CreateInput{
-		Type: ledger.TypeIncome, WalletID: walletID, Amount: amount, Title: &title, Note: note,
+	var id uuid.UUID
+	err := db.WithTx(ctx, s.db, func(tx pgx.Tx) error {
+		q := s.q.WithTx(tx)
+		w, err := loadWallet(ctx, q, spaceID, walletID)
+		if err != nil {
+			return err
+		}
+		title, dir, key := "Balance top up", ledger.DirectionIn, SystemKeyBalanceTopUp
+		t, err := q.CreateTransaction(ctx, sqlc.CreateTransactionParams{
+			SpaceID: spaceID, Type: ledger.TypeAdjustment, Direction: &dir, Title: &title, Note: cleanText(note),
+			Amount: amount, Currency: w.Currency, WalletID: nu(w.ID),
+			OccurredAt: s.now().UTC(), CreatedByID: userID, SystemKey: &key,
+		})
+		if err != nil {
+			return fmt.Errorf("create top up: %w", err)
+		}
+		id = t.ID
+		return ledger.Apply(ctx, tx, t)
 	})
+	if err != nil {
+		return Detail{}, err
+	}
+	return s.Get(ctx, spaceID, id)
 }
 
 // Get returns one transaction of the space.
@@ -211,6 +243,9 @@ func (s *Service) Update(ctx context.Context, spaceID, id uuid.UUID, in UpdateIn
 		if what := specialKind(old); what != "" {
 			return useSpecific(what)
 		}
+		if in.Type != nil && (*in.Type != old.Type || old.Type == ledger.TypeAdjustment || old.Type == ledger.TypeOpeningBalance) {
+			return s.changeType(ctx, tx, q, old, in)
+		}
 		if old.Type == ledger.TypeAdjustment || old.Type == ledger.TypeOpeningBalance {
 			if !in.onlyNote() {
 				return apperror.Validation("Validation failed", map[string]any{
@@ -221,56 +256,96 @@ func (s *Service) Update(ctx context.Context, spaceID, id uuid.UUID, in UpdateIn
 			return err
 		}
 
-		// INCOME / EXPENSE: compute the final values.
-		typ := old.Type
-		if in.Type != nil {
-			typ = *in.Type
-		}
-		walletID := old.WalletID.UUID
-		if in.WalletID != nil {
-			walletID = *in.WalletID
-		}
-		w, err := loadWallet(ctx, q, spaceID, walletID)
-		if err != nil {
-			return err
-		}
-		amount := old.Amount
-		if in.Amount != nil {
-			amount = *in.Amount
-		}
-		occurred := old.OccurredAt
-		if in.OccurredAt != nil {
-			occurred = in.OccurredAt.UTC()
-		}
-		category := old.CategoryID
-		if in.CategoryID.Set {
-			category = uuid.NullUUID{}
-			if in.CategoryID.Value != nil {
-				category = nu(*in.CategoryID.Value)
-			}
-		}
-		if category.Valid {
-			if err := checkCategory(ctx, q, spaceID, category.UUID, typ); err != nil {
-				return err
-			}
-		}
-
-		if err := ledger.Reverse(ctx, tx, old); err != nil {
-			return err
-		}
-		updated, err := q.UpdateIncomeExpense(ctx, sqlc.UpdateIncomeExpenseParams{
-			ID: id, SpaceID: spaceID, Type: typ, WalletID: nu(walletID), Amount: amount, Currency: w.Currency,
-			CategoryID: category, Title: finalText(in.Title, old.Title), Note: finalText(in.Note, old.Note), OccurredAt: occurred,
-		})
-		if err != nil {
-			return err
-		}
-		return ledger.Apply(ctx, tx, updated)
+		return s.updatePlain(ctx, tx, q, old, in)
 	})
 	if err != nil {
 		return Detail{}, err
 	}
 	return s.Get(ctx, spaceID, id)
+}
+
+// updatePlain edits an INCOME / EXPENSE: the old effect is reversed and the new one applied.
+func (s *Service) updatePlain(ctx context.Context, tx pgx.Tx, q *sqlc.Queries, old sqlc.Transaction, in UpdateInput) error {
+	typ := old.Type
+	if in.Type != nil {
+		typ = *in.Type
+	}
+	walletID := old.WalletID.UUID
+	if in.WalletID != nil {
+		walletID = *in.WalletID
+	}
+	w, err := loadWallet(ctx, q, old.SpaceID, walletID)
+	if err != nil {
+		return err
+	}
+	amount := old.Amount
+	if in.Amount != nil {
+		amount = *in.Amount
+	}
+	occurred := old.OccurredAt
+	if in.OccurredAt != nil {
+		occurred = in.OccurredAt.UTC()
+	}
+	category := old.CategoryID
+	if in.CategoryID.Set {
+		category = uuid.NullUUID{}
+		if in.CategoryID.Value != nil {
+			category = nu(*in.CategoryID.Value)
+		}
+	}
+	if category.Valid {
+		if err := checkCategory(ctx, q, old.SpaceID, category.UUID, typ); err != nil {
+			return err
+		}
+	}
+
+	if err := ledger.Reverse(ctx, tx, old); err != nil {
+		return err
+	}
+	updated, err := q.UpdateIncomeExpense(ctx, sqlc.UpdateIncomeExpenseParams{
+		ID: old.ID, SpaceID: old.SpaceID, Type: typ, WalletID: nu(walletID), Amount: amount, Currency: w.Currency,
+		CategoryID: category, Title: finalText(in.Title, old.Title), Note: finalText(in.Note, old.Note), OccurredAt: occurred,
+	})
+	if err != nil {
+		return err
+	}
+	return ledger.Apply(ctx, tx, updated)
+}
+
+// changeType handles a PATCH whose type differs from the stored one. The only change of kind
+// that is not INCOME <-> EXPENSE is an explicit "this is not income/expense" action: an
+// uncategorised INCOME or EXPENSE becomes an ADJUSTMENT (IN or OUT, same sign and amount, so the
+// wallet balance does not move and no ledger reversal is needed). It is never guessed from the title.
+func (s *Service) changeType(ctx context.Context, tx pgx.Tx, q *sqlc.Queries, old sqlc.Transaction, in UpdateInput) error {
+	target := *in.Type
+	isPlain := old.Type == ledger.TypeIncome || old.Type == ledger.TypeExpense
+	switch {
+	case target == ledger.TypeAdjustment && isPlain:
+		if in.WalletID != nil || in.Amount != nil || in.CategoryID.Set || in.Title.Set || in.OccurredAt != nil {
+			return apperror.Validation("Validation failed", map[string]any{
+				"body": "only the note can be sent together with type ADJUSTMENT",
+			})
+		}
+		if old.CategoryID.Valid {
+			return typeChangeNotAllowed("A categorised transaction cannot become an adjustment: remove the category first")
+		}
+		dir := ledger.DirectionIn
+		if old.Type == ledger.TypeExpense {
+			dir = ledger.DirectionOut
+		}
+		if _, err := q.ReclassifyToAdjustment(ctx, sqlc.ReclassifyToAdjustmentParams{ID: old.ID, SpaceID: old.SpaceID, Direction: &dir}); err != nil {
+			return err
+		}
+		if in.Note.Set {
+			_, err := q.UpdateTransactionNote(ctx, sqlc.UpdateTransactionNoteParams{ID: old.ID, SpaceID: old.SpaceID, Note: cleanText(in.Note.Value)})
+			return err
+		}
+		return nil
+	case isPlain && (target == ledger.TypeIncome || target == ledger.TypeExpense):
+		return s.updatePlain(ctx, tx, q, old, in)
+	default:
+		return typeChangeNotAllowed("A " + old.Type + " transaction cannot be changed to " + target)
+	}
 }
 
 func finalText(o Optional[string], old *string) *string {

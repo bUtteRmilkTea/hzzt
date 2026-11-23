@@ -110,6 +110,58 @@ func (q *Queries) ListActiveSpaceIDs(ctx context.Context) ([]uuid.UUID, error) {
 	return items, nil
 }
 
+const listNetWorthContributions = `-- name: ListNetWorthContributions :many
+SELECT id, type, direction, amount, currency, occurred_at
+FROM transactions
+WHERE space_id = $1 AND type IN ('ADJUSTMENT', 'OPENING_BALANCE')
+  AND occurred_at >= $2 AND occurred_at <= $3
+ORDER BY occurred_at
+`
+
+type ListNetWorthContributionsParams struct {
+	SpaceID      uuid.UUID `json:"space_id"`
+	OccurredAt   time.Time `json:"occurred_at"`
+	OccurredAt_2 time.Time `json:"occurred_at_2"`
+}
+
+type ListNetWorthContributionsRow struct {
+	ID         uuid.UUID       `json:"id"`
+	Type       string          `json:"type"`
+	Direction  *string         `json:"direction"`
+	Amount     decimal.Decimal `json:"amount"`
+	Currency   string          `json:"currency"`
+	OccurredAt time.Time       `json:"occurred_at"`
+}
+
+// Money put into or taken out of the wallets from outside (adjustments, top ups, opening balances).
+// Own-wallet transfers, trades and settlements are neutral for the net worth and are not listed.
+func (q *Queries) ListNetWorthContributions(ctx context.Context, arg ListNetWorthContributionsParams) ([]ListNetWorthContributionsRow, error) {
+	rows, err := q.db.Query(ctx, listNetWorthContributions, arg.SpaceID, arg.OccurredAt, arg.OccurredAt_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListNetWorthContributionsRow{}
+	for rows.Next() {
+		var i ListNetWorthContributionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Type,
+			&i.Direction,
+			&i.Amount,
+			&i.Currency,
+			&i.OccurredAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listNetWorthSnapshots = `-- name: ListNetWorthSnapshots :many
 SELECT space_id, date, currency, cash, investments, fixed_assets, receivables, liabilities, net_worth, created_at FROM net_worth_snapshots
 WHERE space_id = $1 AND ($2::date IS NULL OR date >= $2::date)

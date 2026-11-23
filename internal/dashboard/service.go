@@ -296,10 +296,13 @@ func (s *Service) Analytics(ctx context.Context, space sqlc.Space, r period.Rang
 			continue
 		}
 		it := currency.MoneyItem{Amount: row.Total, Currency: row.Currency}
-		if row.Type == typeIncome {
+		switch row.Type {
+		case typeIncome:
 			inc[i] = append(inc[i], it)
-		} else {
+		case typeExpense:
 			exp[i] = append(exp[i], it)
+		default: // transfers, trades, adjustments and opening balances never enter a bucket
+			continue
 		}
 	}
 	w := newWarnSet()
@@ -354,13 +357,16 @@ func (s *Service) Calendar(ctx context.Context, space sqlc.Space, year int, mont
 		if row.Day.Month() != month || d < 1 || d > n {
 			continue
 		}
-		counts[d] += int(row.Cnt)
 		it := currency.MoneyItem{Amount: row.Total, Currency: row.Currency}
-		if row.Type == typeIncome {
+		switch row.Type {
+		case typeIncome:
 			inc[d] = append(inc[d], it)
-		} else {
+		case typeExpense:
 			exp[d] = append(exp[d], it)
+		default: // only income and expense count on the calendar
+			continue
 		}
+		counts[d] += int(row.Cnt)
 	}
 	w := newWarnSet()
 	out := CalendarMonth{Currency: strings.TrimSpace(space.BaseCurrency), Month: time.Date(year, month, 1, 0, 0, 0, 0, time.UTC).Format("2006-01"), Days: make([]Day, 0, n)}

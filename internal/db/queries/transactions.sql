@@ -4,7 +4,7 @@ INSERT INTO transactions (
     occurred_at, created_by_id,
     to_wallet_id, to_amount, to_currency, fx_rate,
     investment_id, investment_action, quantity, unit_price, fee, realized_pl, position_before, position_after,
-    manual_asset_id, settlement_direction
+    manual_asset_id, settlement_direction, system_key
 ) VALUES (
     $1, $2, sqlc.narg('direction'), sqlc.narg('title'), sqlc.narg('note'), $3, $4,
     sqlc.narg('wallet_id'), sqlc.narg('category_id'),
@@ -12,7 +12,7 @@ INSERT INTO transactions (
     sqlc.narg('to_wallet_id'), sqlc.narg('to_amount'), sqlc.narg('to_currency'), sqlc.narg('fx_rate'),
     sqlc.narg('investment_id'), sqlc.narg('investment_action'), sqlc.narg('quantity'), sqlc.narg('unit_price'),
     sqlc.narg('fee'), sqlc.narg('realized_pl'), sqlc.narg('position_before'), sqlc.narg('position_after'),
-    sqlc.narg('manual_asset_id'), sqlc.narg('settlement_direction')
+    sqlc.narg('manual_asset_id'), sqlc.narg('settlement_direction'), sqlc.narg('system_key')
 )
 RETURNING *;
 
@@ -38,6 +38,11 @@ SELECT * FROM transactions WHERE id = $1 AND space_id = $2 FOR UPDATE;
 UPDATE transactions SET
     type = $3, wallet_id = $4, category_id = sqlc.narg('category_id'), amount = $5, currency = $6,
     title = sqlc.narg('title'), note = sqlc.narg('note'), occurred_at = $7, updated_at = now()
+WHERE id = $1 AND space_id = $2
+RETURNING *;
+
+-- name: ReclassifyToAdjustment :one
+UPDATE transactions SET type = 'ADJUSTMENT', direction = $3, updated_at = now()
 WHERE id = $1 AND space_id = $2
 RETURNING *;
 

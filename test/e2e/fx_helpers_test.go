@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/shopspring/decimal"
 
@@ -16,6 +17,9 @@ type FakeFX struct {
 	Set   currency.RateSet
 	Err   error
 	Calls int
+	// Clock, when set, caps the rate date at the test's "now": a test that moves
+	// the clock back must not get rates dated in its future.
+	Clock *testClock
 }
 
 func (f *FakeFX) Latest(context.Context) (currency.RateSet, error) {
@@ -23,7 +27,13 @@ func (f *FakeFX) Latest(context.Context) (currency.RateSet, error) {
 	if f.Err != nil {
 		return currency.RateSet{}, f.Err
 	}
-	return f.Set, nil
+	set := f.Set
+	if f.Clock != nil {
+		if day := f.Clock.Now().UTC().Truncate(24 * time.Hour); set.AsOf.After(day) {
+			set.AsOf = day
+		}
+	}
+	return set, nil
 }
 
 func dec(s string) decimal.Decimal { return decimal.RequireFromString(s) }

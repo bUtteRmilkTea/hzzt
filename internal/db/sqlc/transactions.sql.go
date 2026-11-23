@@ -82,7 +82,7 @@ INSERT INTO transactions (
     occurred_at, created_by_id,
     to_wallet_id, to_amount, to_currency, fx_rate,
     investment_id, investment_action, quantity, unit_price, fee, realized_pl, position_before, position_after,
-    manual_asset_id, settlement_direction
+    manual_asset_id, settlement_direction, system_key
 ) VALUES (
     $1, $2, $7, $8, $9, $3, $4,
     $10, $11,
@@ -90,9 +90,9 @@ INSERT INTO transactions (
     $12, $13, $14, $15,
     $16, $17, $18, $19,
     $20, $21, $22, $23,
-    $24, $25
+    $24, $25, $26
 )
-RETURNING id, space_id, type, direction, title, note, amount, currency, wallet_id, category_id, occurred_at, created_by_id, created_at, updated_at, to_wallet_id, to_amount, to_currency, fx_rate, investment_id, investment_action, quantity, unit_price, fee, realized_pl, position_before, position_after, manual_asset_id, settlement_direction
+RETURNING id, space_id, type, direction, title, note, amount, currency, wallet_id, category_id, occurred_at, created_by_id, created_at, updated_at, to_wallet_id, to_amount, to_currency, fx_rate, investment_id, investment_action, quantity, unit_price, fee, realized_pl, position_before, position_after, manual_asset_id, settlement_direction, system_key
 `
 
 type CreateTransactionParams struct {
@@ -121,6 +121,7 @@ type CreateTransactionParams struct {
 	PositionAfter       []byte              `json:"position_after"`
 	ManualAssetID       uuid.NullUUID       `json:"manual_asset_id"`
 	SettlementDirection *string             `json:"settlement_direction"`
+	SystemKey           *string             `json:"system_key"`
 }
 
 func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionParams) (Transaction, error) {
@@ -150,6 +151,7 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 		arg.PositionAfter,
 		arg.ManualAssetID,
 		arg.SettlementDirection,
+		arg.SystemKey,
 	)
 	var i Transaction
 	err := row.Scan(
@@ -181,6 +183,7 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 		&i.PositionAfter,
 		&i.ManualAssetID,
 		&i.SettlementDirection,
+		&i.SystemKey,
 	)
 	return i, err
 }
@@ -285,7 +288,7 @@ func (q *Queries) DeleteTransaction(ctx context.Context, arg DeleteTransactionPa
 }
 
 const getTransactionDetail = `-- name: GetTransactionDetail :one
-SELECT t.id, t.space_id, t.type, t.direction, t.title, t.note, t.amount, t.currency, t.wallet_id, t.category_id, t.occurred_at, t.created_by_id, t.created_at, t.updated_at, t.to_wallet_id, t.to_amount, t.to_currency, t.fx_rate, t.investment_id, t.investment_action, t.quantity, t.unit_price, t.fee, t.realized_pl, t.position_before, t.position_after, t.manual_asset_id, t.settlement_direction,
+SELECT t.id, t.space_id, t.type, t.direction, t.title, t.note, t.amount, t.currency, t.wallet_id, t.category_id, t.occurred_at, t.created_by_id, t.created_at, t.updated_at, t.to_wallet_id, t.to_amount, t.to_currency, t.fx_rate, t.investment_id, t.investment_action, t.quantity, t.unit_price, t.fee, t.realized_pl, t.position_before, t.position_after, t.manual_asset_id, t.settlement_direction, t.system_key,
        w.name  AS wallet_name,  w.icon  AS wallet_icon,
        tw.name AS to_wallet_name, tw.icon AS to_wallet_icon,
        c.name  AS category_name, c.icon AS category_icon, c.color AS category_color,
@@ -334,6 +337,7 @@ type GetTransactionDetailRow struct {
 	PositionAfter       []byte              `json:"position_after"`
 	ManualAssetID       uuid.NullUUID       `json:"manual_asset_id"`
 	SettlementDirection *string             `json:"settlement_direction"`
+	SystemKey           *string             `json:"system_key"`
 	WalletName          *string             `json:"wallet_name"`
 	WalletIcon          *string             `json:"wallet_icon"`
 	ToWalletName        *string             `json:"to_wallet_name"`
@@ -380,6 +384,7 @@ func (q *Queries) GetTransactionDetail(ctx context.Context, arg GetTransactionDe
 		&i.PositionAfter,
 		&i.ManualAssetID,
 		&i.SettlementDirection,
+		&i.SystemKey,
 		&i.WalletName,
 		&i.WalletIcon,
 		&i.ToWalletName,
@@ -397,7 +402,7 @@ func (q *Queries) GetTransactionDetail(ctx context.Context, arg GetTransactionDe
 }
 
 const getTransactionForUpdate = `-- name: GetTransactionForUpdate :one
-SELECT id, space_id, type, direction, title, note, amount, currency, wallet_id, category_id, occurred_at, created_by_id, created_at, updated_at, to_wallet_id, to_amount, to_currency, fx_rate, investment_id, investment_action, quantity, unit_price, fee, realized_pl, position_before, position_after, manual_asset_id, settlement_direction FROM transactions WHERE id = $1 AND space_id = $2 FOR UPDATE
+SELECT id, space_id, type, direction, title, note, amount, currency, wallet_id, category_id, occurred_at, created_by_id, created_at, updated_at, to_wallet_id, to_amount, to_currency, fx_rate, investment_id, investment_action, quantity, unit_price, fee, realized_pl, position_before, position_after, manual_asset_id, settlement_direction, system_key FROM transactions WHERE id = $1 AND space_id = $2 FOR UPDATE
 `
 
 type GetTransactionForUpdateParams struct {
@@ -437,12 +442,13 @@ func (q *Queries) GetTransactionForUpdate(ctx context.Context, arg GetTransactio
 		&i.PositionAfter,
 		&i.ManualAssetID,
 		&i.SettlementDirection,
+		&i.SystemKey,
 	)
 	return i, err
 }
 
 const listTransactions = `-- name: ListTransactions :many
-SELECT t.id, t.space_id, t.type, t.direction, t.title, t.note, t.amount, t.currency, t.wallet_id, t.category_id, t.occurred_at, t.created_by_id, t.created_at, t.updated_at, t.to_wallet_id, t.to_amount, t.to_currency, t.fx_rate, t.investment_id, t.investment_action, t.quantity, t.unit_price, t.fee, t.realized_pl, t.position_before, t.position_after, t.manual_asset_id, t.settlement_direction,
+SELECT t.id, t.space_id, t.type, t.direction, t.title, t.note, t.amount, t.currency, t.wallet_id, t.category_id, t.occurred_at, t.created_by_id, t.created_at, t.updated_at, t.to_wallet_id, t.to_amount, t.to_currency, t.fx_rate, t.investment_id, t.investment_action, t.quantity, t.unit_price, t.fee, t.realized_pl, t.position_before, t.position_after, t.manual_asset_id, t.settlement_direction, t.system_key,
        w.name  AS wallet_name,  w.icon  AS wallet_icon,
        tw.name AS to_wallet_name, tw.icon AS to_wallet_icon,
        c.name  AS category_name, c.icon AS category_icon, c.color AS category_color,
@@ -515,6 +521,7 @@ type ListTransactionsRow struct {
 	PositionAfter       []byte              `json:"position_after"`
 	ManualAssetID       uuid.NullUUID       `json:"manual_asset_id"`
 	SettlementDirection *string             `json:"settlement_direction"`
+	SystemKey           *string             `json:"system_key"`
 	WalletName          *string             `json:"wallet_name"`
 	WalletIcon          *string             `json:"wallet_icon"`
 	ToWalletName        *string             `json:"to_wallet_name"`
@@ -578,6 +585,7 @@ func (q *Queries) ListTransactions(ctx context.Context, arg ListTransactionsPara
 			&i.PositionAfter,
 			&i.ManualAssetID,
 			&i.SettlementDirection,
+			&i.SystemKey,
 			&i.WalletName,
 			&i.WalletIcon,
 			&i.ToWalletName,
@@ -601,12 +609,61 @@ func (q *Queries) ListTransactions(ctx context.Context, arg ListTransactionsPara
 	return items, nil
 }
 
+const reclassifyToAdjustment = `-- name: ReclassifyToAdjustment :one
+UPDATE transactions SET type = 'ADJUSTMENT', direction = $3, updated_at = now()
+WHERE id = $1 AND space_id = $2
+RETURNING id, space_id, type, direction, title, note, amount, currency, wallet_id, category_id, occurred_at, created_by_id, created_at, updated_at, to_wallet_id, to_amount, to_currency, fx_rate, investment_id, investment_action, quantity, unit_price, fee, realized_pl, position_before, position_after, manual_asset_id, settlement_direction, system_key
+`
+
+type ReclassifyToAdjustmentParams struct {
+	ID        uuid.UUID `json:"id"`
+	SpaceID   uuid.UUID `json:"space_id"`
+	Direction *string   `json:"direction"`
+}
+
+func (q *Queries) ReclassifyToAdjustment(ctx context.Context, arg ReclassifyToAdjustmentParams) (Transaction, error) {
+	row := q.db.QueryRow(ctx, reclassifyToAdjustment, arg.ID, arg.SpaceID, arg.Direction)
+	var i Transaction
+	err := row.Scan(
+		&i.ID,
+		&i.SpaceID,
+		&i.Type,
+		&i.Direction,
+		&i.Title,
+		&i.Note,
+		&i.Amount,
+		&i.Currency,
+		&i.WalletID,
+		&i.CategoryID,
+		&i.OccurredAt,
+		&i.CreatedByID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ToWalletID,
+		&i.ToAmount,
+		&i.ToCurrency,
+		&i.FxRate,
+		&i.InvestmentID,
+		&i.InvestmentAction,
+		&i.Quantity,
+		&i.UnitPrice,
+		&i.Fee,
+		&i.RealizedPl,
+		&i.PositionBefore,
+		&i.PositionAfter,
+		&i.ManualAssetID,
+		&i.SettlementDirection,
+		&i.SystemKey,
+	)
+	return i, err
+}
+
 const updateIncomeExpense = `-- name: UpdateIncomeExpense :one
 UPDATE transactions SET
     type = $3, wallet_id = $4, category_id = $8, amount = $5, currency = $6,
     title = $9, note = $10, occurred_at = $7, updated_at = now()
 WHERE id = $1 AND space_id = $2
-RETURNING id, space_id, type, direction, title, note, amount, currency, wallet_id, category_id, occurred_at, created_by_id, created_at, updated_at, to_wallet_id, to_amount, to_currency, fx_rate, investment_id, investment_action, quantity, unit_price, fee, realized_pl, position_before, position_after, manual_asset_id, settlement_direction
+RETURNING id, space_id, type, direction, title, note, amount, currency, wallet_id, category_id, occurred_at, created_by_id, created_at, updated_at, to_wallet_id, to_amount, to_currency, fx_rate, investment_id, investment_action, quantity, unit_price, fee, realized_pl, position_before, position_after, manual_asset_id, settlement_direction, system_key
 `
 
 type UpdateIncomeExpenseParams struct {
@@ -665,6 +722,7 @@ func (q *Queries) UpdateIncomeExpense(ctx context.Context, arg UpdateIncomeExpen
 		&i.PositionAfter,
 		&i.ManualAssetID,
 		&i.SettlementDirection,
+		&i.SystemKey,
 	)
 	return i, err
 }
@@ -675,7 +733,7 @@ UPDATE transactions SET
     quantity = $9, unit_price = $10, fee = $11, realized_pl = $15,
     position_before = $12, position_after = $13, occurred_at = $14, note = $16, updated_at = now()
 WHERE id = $1 AND space_id = $2 AND investment_id IS NOT NULL
-RETURNING id, space_id, type, direction, title, note, amount, currency, wallet_id, category_id, occurred_at, created_by_id, created_at, updated_at, to_wallet_id, to_amount, to_currency, fx_rate, investment_id, investment_action, quantity, unit_price, fee, realized_pl, position_before, position_after, manual_asset_id, settlement_direction
+RETURNING id, space_id, type, direction, title, note, amount, currency, wallet_id, category_id, occurred_at, created_by_id, created_at, updated_at, to_wallet_id, to_amount, to_currency, fx_rate, investment_id, investment_action, quantity, unit_price, fee, realized_pl, position_before, position_after, manual_asset_id, settlement_direction, system_key
 `
 
 type UpdateInvestmentTradeParams struct {
@@ -747,6 +805,7 @@ func (q *Queries) UpdateInvestmentTrade(ctx context.Context, arg UpdateInvestmen
 		&i.PositionAfter,
 		&i.ManualAssetID,
 		&i.SettlementDirection,
+		&i.SystemKey,
 	)
 	return i, err
 }
@@ -754,7 +813,7 @@ func (q *Queries) UpdateInvestmentTrade(ctx context.Context, arg UpdateInvestmen
 const updateTransactionNote = `-- name: UpdateTransactionNote :one
 UPDATE transactions SET note = $3, updated_at = now()
 WHERE id = $1 AND space_id = $2
-RETURNING id, space_id, type, direction, title, note, amount, currency, wallet_id, category_id, occurred_at, created_by_id, created_at, updated_at, to_wallet_id, to_amount, to_currency, fx_rate, investment_id, investment_action, quantity, unit_price, fee, realized_pl, position_before, position_after, manual_asset_id, settlement_direction
+RETURNING id, space_id, type, direction, title, note, amount, currency, wallet_id, category_id, occurred_at, created_by_id, created_at, updated_at, to_wallet_id, to_amount, to_currency, fx_rate, investment_id, investment_action, quantity, unit_price, fee, realized_pl, position_before, position_after, manual_asset_id, settlement_direction, system_key
 `
 
 type UpdateTransactionNoteParams struct {
@@ -795,6 +854,7 @@ func (q *Queries) UpdateTransactionNote(ctx context.Context, arg UpdateTransacti
 		&i.PositionAfter,
 		&i.ManualAssetID,
 		&i.SettlementDirection,
+		&i.SystemKey,
 	)
 	return i, err
 }
@@ -805,7 +865,7 @@ UPDATE transactions SET
     to_amount = $7, to_currency = $8, fx_rate = $9, occurred_at = $10,
     note = $11, updated_at = now()
 WHERE id = $1 AND space_id = $2 AND type = 'TRANSFER'
-RETURNING id, space_id, type, direction, title, note, amount, currency, wallet_id, category_id, occurred_at, created_by_id, created_at, updated_at, to_wallet_id, to_amount, to_currency, fx_rate, investment_id, investment_action, quantity, unit_price, fee, realized_pl, position_before, position_after, manual_asset_id, settlement_direction
+RETURNING id, space_id, type, direction, title, note, amount, currency, wallet_id, category_id, occurred_at, created_by_id, created_at, updated_at, to_wallet_id, to_amount, to_currency, fx_rate, investment_id, investment_action, quantity, unit_price, fee, realized_pl, position_before, position_after, manual_asset_id, settlement_direction, system_key
 `
 
 type UpdateTransferParams struct {
@@ -866,6 +926,7 @@ func (q *Queries) UpdateTransfer(ctx context.Context, arg UpdateTransferParams) 
 		&i.PositionAfter,
 		&i.ManualAssetID,
 		&i.SettlementDirection,
+		&i.SystemKey,
 	)
 	return i, err
 }

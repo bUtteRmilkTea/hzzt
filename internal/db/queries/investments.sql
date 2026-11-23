@@ -2,11 +2,11 @@
 INSERT INTO investments (
     space_id, asset_type, price_mode, name, symbol, icon, quote_currency, quantity, avg_buy_price,
     manual_price, fees, manual_current_value, purchase_date, estimated_annual_change_pct,
-    manual_fx_rate, details, created_by_id, instrument_id
+    manual_fx_rate, details, created_by_id, instrument_id, wrapper
 ) VALUES (
     $1, $2, $3, $4, sqlc.narg('symbol'), $5, $6, $7, $8,
     $9, $10, sqlc.narg('manual_current_value'), sqlc.narg('purchase_date'), $11,
-    sqlc.narg('manual_fx_rate'), $12, $13, sqlc.narg('instrument_id')
+    sqlc.narg('manual_fx_rate'), $12, $13, sqlc.narg('instrument_id'), sqlc.narg('wrapper')
 )
 RETURNING *;
 
@@ -29,7 +29,7 @@ UPDATE investments SET
     quantity = $7, avg_buy_price = $8, manual_price = $9, fees = $10,
     manual_current_value = sqlc.narg('manual_current_value'), purchase_date = sqlc.narg('purchase_date'),
     estimated_annual_change_pct = $11, manual_fx_rate = sqlc.narg('manual_fx_rate'),
-    details = $12, updated_at = now()
+    details = $12, wrapper = sqlc.narg('wrapper'), updated_at = now()
 WHERE id = $1 AND space_id = $2 AND deleted_at IS NULL
 RETURNING *;
 

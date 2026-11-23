@@ -104,6 +104,8 @@ func toWallets(ws []sqlc.Wallet) ([]Wallet, error) {
 type ListResult struct {
 	Wallets []Wallet
 	Total   currency.AggregateResult
+	// BaseBalance is each wallet's balance in the base currency; a wallet without a usable FX rate has no entry.
+	BaseBalance map[uuid.UUID]decimal.Decimal
 }
 
 // List returns live wallets (favorites first, then sort_order) and their total
@@ -133,10 +135,14 @@ func (s *Service) List(ctx context.Context, spaceID uuid.UUID) (ListResult, erro
 		return ListResult{}, err
 	}
 	items := make([]currency.MoneyItem, 0, len(ws))
+	base := make(map[uuid.UUID]decimal.Decimal, len(ws))
 	for _, w := range ws {
 		items = append(items, currency.MoneyItem{Label: w.Name, Amount: w.Balance, Currency: w.Currency})
+		if v, err := currency.Convert(w.Balance, strings.TrimSpace(w.Currency), cc.BaseCurrency, cc); err == nil {
+			base[w.ID] = v
+		}
 	}
-	return ListResult{Wallets: ws, Total: currency.Aggregate(items, cc)}, nil
+	return ListResult{Wallets: ws, Total: currency.Aggregate(items, cc), BaseBalance: base}, nil
 }
 
 // Get returns one live wallet of the space.

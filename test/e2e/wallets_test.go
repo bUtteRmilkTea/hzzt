@@ -216,7 +216,7 @@ func TestWalletListOrderAndTotal(t *testing.T) {
 		mk("Pounds", "GBP", "50", false) // the fake provider has a GBP rate but no SGD rate
 		e := mk("Dollars SG", "SGD", "70", false)
 		l := s.walletList(u, sid)
-		assert.True(t, dec("120").Add(dec("50").Div(dec("0.75"))).Sub(dec(l.Total.Total)).Abs().LessThan(dec("0.000001")), l.Total.Total)
+		assert.Equal(t, "186.67", l.Total.Total, "120 + 50 / 0.75, shown with 2 decimals")
 		require.Len(t, l.Total.Warnings, 1)
 		assert.Equal(t, "FX_RATE_UNAVAILABLE", l.Total.Warnings[0].Code)
 		assert.Equal(t, "Dollars SG", l.Total.Warnings[0].Label)

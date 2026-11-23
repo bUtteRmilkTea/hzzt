@@ -1,6 +1,7 @@
 package currency
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -8,6 +9,8 @@ import (
 	"time"
 
 	"github.com/shopspring/decimal"
+
+	"github.com/JonathanRainee/hzzt/internal/platform/money"
 )
 
 // ErrRateUnavailable means no usable rate exists for the requested pair.
@@ -107,6 +110,26 @@ type AggregateResult struct {
 	Currency  string           `json:"currency"`
 	Breakdown []BreakdownEntry `json:"breakdown"`
 	Warnings  []Warning        `json:"warnings"`
+}
+
+// MarshalJSON renders the amounts with the currencies' display decimals (IDR and JPY: none,
+// others: 2): the total and each converted figure in the base currency, each original in its own.
+func (r AggregateResult) MarshalJSON() ([]byte, error) {
+	type entry struct {
+		Currency  string       `json:"currency"`
+		Original  money.Amount `json:"original" swaggertype:"string"`
+		Converted money.Amount `json:"converted" swaggertype:"string"`
+	}
+	bd := make([]entry, 0, len(r.Breakdown))
+	for _, e := range r.Breakdown {
+		bd = append(bd, entry{e.Currency, money.NewAmount(e.Original, e.Currency), money.NewAmount(e.Converted, r.Currency)})
+	}
+	return json.Marshal(struct {
+		Total     money.Amount `json:"total" swaggertype:"string"`
+		Currency  string       `json:"currency"`
+		Breakdown []entry      `json:"breakdown"`
+		Warnings  []Warning    `json:"warnings"`
+	}{money.NewAmount(r.Total, r.Currency), r.Currency, bd, r.Warnings})
 }
 
 // Aggregate converts every item to the base currency and sums them. An item

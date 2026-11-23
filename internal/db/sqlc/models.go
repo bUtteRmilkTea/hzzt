@@ -83,6 +83,7 @@ type Investment struct {
 	CreatedAt                time.Time           `json:"created_at"`
 	UpdatedAt                time.Time           `json:"updated_at"`
 	DeletedAt                *time.Time          `json:"deleted_at"`
+	Wrapper                  *string             `json:"wrapper"`
 }
 
 type InvestmentParticipant struct {
@@ -106,6 +107,17 @@ type InvestmentShareChange struct {
 	Before       []byte    `json:"before"`
 	After        []byte    `json:"after"`
 	CreatedAt    time.Time `json:"created_at"`
+}
+
+type InvestmentWrapperAllocation struct {
+	ID          uuid.UUID `json:"id"`
+	SpaceID     uuid.UUID `json:"space_id"`
+	AssetType   string    `json:"asset_type"`
+	WrapperKey  string    `json:"wrapper_key"`
+	Label       string    `json:"label"`
+	PctBps      int32     `json:"pct_bps"`
+	UpdatedByID uuid.UUID `json:"updated_by_id"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type JobRun struct {
@@ -296,6 +308,15 @@ type UserPreference struct {
 	AppLockFailedAttempts int32      `json:"app_lock_failed_attempts"`
 	AppLockLockedUntil    *time.Time `json:"app_lock_locked_until"`
 	UpdatedAt             time.Time  `json:"updated_at"`
+}
+
+type UserWalletPref struct {
+	UserID    uuid.UUID `json:"user_id"`
+	WalletID  uuid.UUID `json:"wallet_id"`
+	HideLogo  bool      `json:"hide_logo"`
+	HideName  bool      `json:"hide_name"`
+	HideType  bool      `json:"hide_type"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type Wallet struct {

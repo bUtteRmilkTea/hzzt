@@ -77,7 +77,7 @@ func TestNetWorthSummaryAcrossCurrencies(t *testing.T) {
 	assert.True(t, dec("1043.75").Equal(dec(nw.Investments.Cost)), "1000 + 700,000 IDR (= 43.75)")
 	assert.True(t, dec("106.25").Equal(dec(nw.Investments.UnrealizedPL)))
 	require.NotNil(t, nw.Investments.UnrealizedPLPct)
-	assert.True(t, dec("106.25").Div(dec("1043.75")).Mul(dec("100")).Sub(dec(*nw.Investments.UnrealizedPLPct)).Abs().LessThan(dec("0.000001")), *nw.Investments.UnrealizedPLPct)
+	assert.Equal(t, "10.18", *nw.Investments.UnrealizedPLPct)
 	require.NotNil(t, nw.FixedAssets)
 	assert.True(t, dec("10000").Equal(dec(*nw.FixedAssets)), "160,000,000 IDR")
 	assert.True(t, dec("125").Equal(dec(*nw.Receivables)), "100 EUR at 0.8 per USD")
@@ -171,7 +171,7 @@ func TestNetWorthCountsSharedInvestmentsByShare(t *testing.T) {
 	assert.True(t, dec("500.01").Equal(dec(s.networth(owner, sid).Investments.Value)), "owner space: 50%")
 	assert.True(t, dec("0").Equal(dec(s.networth(bob, spaceIDOf(bob)).Investments.Value)))
 
-	require.Equal(t, http.StatusNoContent, s.acceptShare(bob, byName(out.Items, "Bob").ID, spaceIDOf(bob)).Status)
+	require.Equal(t, http.StatusOK, s.acceptShare(bob, byName(out.Items, "Bob").ID, spaceIDOf(bob)).Status)
 	nw := s.networth(bob, spaceIDOf(bob))
 	assert.True(t, dec("300").Equal(dec(nw.Investments.Value)), "the attached space counts 30% after acceptance")
 	assert.True(t, dec("300").Equal(dec(nw.NetWorth)))

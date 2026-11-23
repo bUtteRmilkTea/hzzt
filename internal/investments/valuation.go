@@ -1,6 +1,7 @@
 package investments
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -37,8 +38,23 @@ type BaseValues struct {
 	FxRate decimal.Decimal `json:"fxRate" swaggertype:"string" example:"16000"`
 }
 
+// MarshalJSON renders the amounts with the base currency's display decimals (IDR and JPY: none,
+// others: 2); the exchange rate keeps its precision.
+func (b BaseValues) MarshalJSON() ([]byte, error) {
+	type plain BaseValues
+	return json.Marshal(struct {
+		plain
+		MarketValue  money.Amount `json:"marketValue" swaggertype:"string"`
+		CostBasis    money.Amount `json:"costBasis" swaggertype:"string"`
+		UnrealizedPL money.Amount `json:"unrealizedPl" swaggertype:"string"`
+	}{plain(b), money.NewAmount(b.MarketValue, b.Currency), money.NewAmount(b.CostBasis, b.Currency), money.NewAmount(b.UnrealizedPL, b.Currency)})
+}
+
 // Valuation is the computed worth of one investment.
 type Valuation struct {
+	// Currency is the quote currency of the native figures below (not serialised separately).
+	Currency string `json:"-"`
+
 	Price       decimal.Decimal `json:"price" swaggertype:"string"`
 	PriceSource string          `json:"priceSource" enums:"MARKET,MANUAL,MANUAL_VALUE"`
 	PriceAsOf   *time.Time      `json:"priceAsOf"`
@@ -54,6 +70,20 @@ type Valuation struct {
 	// Base holds the converted figures; null when no FX rate is available (see Warnings).
 	Base     *BaseValues        `json:"base"`
 	Warnings []currency.Warning `json:"warnings"`
+}
+
+// MarshalJSON renders the native figures with the quote currency's display decimals and the
+// percentage with 2; the price keeps its precision (crypto needs many places).
+func (v Valuation) MarshalJSON() ([]byte, error) {
+	type plain Valuation
+	return json.Marshal(struct {
+		plain
+		MarketValue     money.Amount `json:"marketValue" swaggertype:"string"`
+		CostBasis       money.Amount `json:"costBasis" swaggertype:"string"`
+		UnrealizedPL    money.Amount `json:"unrealizedPl" swaggertype:"string"`
+		UnrealizedPLPct *money.Pct   `json:"unrealizedPlPct" swaggertype:"string"`
+	}{plain(v), money.NewAmount(v.MarketValue, v.Currency), money.NewAmount(v.CostBasis, v.Currency),
+		money.NewAmount(v.UnrealizedPL, v.Currency), money.PctPtr(v.UnrealizedPLPct)})
 }
 
 // Share is one person's part of a shared investment, in basis points of 10,000.
@@ -110,7 +140,7 @@ var hundred = decimal.NewFromInt(100)
 //  6. Value returns the figures of the whole investment; Allocate scales them to
 //     the viewer's share when the investment is shared.
 func Value(inv sqlc.Investment, mp *MarketPrice, cc *currency.ConversionContext, now time.Time) Valuation {
-	v := Valuation{PriceSource: SourceManual, Warnings: []currency.Warning{}}
+	v := Valuation{Currency: strings.TrimSpace(inv.QuoteCurrency), PriceSource: SourceManual, Warnings: []currency.Warning{}}
 
 	price := inv.ManualPrice
 	if inv.PriceMode == PriceModeAuto && mp != nil {
@@ -182,6 +212,19 @@ type Summary struct {
 	// UnrealizedPLPct is a percentage; null when the total cost is 0.
 	UnrealizedPLPct *decimal.Decimal   `json:"unrealizedPlPct" swaggertype:"string"`
 	Warnings        []currency.Warning `json:"warnings"`
+}
+
+// MarshalJSON renders the totals with the base currency's display decimals and the percentage with 2.
+func (s Summary) MarshalJSON() ([]byte, error) {
+	type plain Summary
+	return json.Marshal(struct {
+		plain
+		TotalValue      money.Amount `json:"totalValue" swaggertype:"string"`
+		TotalCost       money.Amount `json:"totalCost" swaggertype:"string"`
+		UnrealizedPL    money.Amount `json:"unrealizedPl" swaggertype:"string"`
+		UnrealizedPLPct *money.Pct   `json:"unrealizedPlPct" swaggertype:"string"`
+	}{plain(s), money.NewAmount(s.TotalValue, s.Currency), money.NewAmount(s.TotalCost, s.Currency),
+		money.NewAmount(s.UnrealizedPL, s.Currency), money.PctPtr(s.UnrealizedPLPct)})
 }
 
 // Summarize adds up the base-currency figures of the valuations. Investments

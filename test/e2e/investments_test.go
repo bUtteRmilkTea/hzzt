@@ -55,6 +55,7 @@ type investmentBody struct {
 		Base     *string `json:"base"`
 		Sells    int     `json:"sells"`
 	} `json:"realizedPl"`
+	Wrapper      *string       `json:"wrapper"`
 	InstrumentID *string       `json:"instrumentId"`
 	IsShared     bool          `json:"isShared"`
 	Valuation    valuationBody `json:"valuation"`
@@ -222,7 +223,7 @@ func TestCreateEachInvestmentType(t *testing.T) {
 		assert.True(t, dec("1845000").Equal(dec(v.CostBasis)))
 		assert.True(t, dec("55000").Equal(dec(v.UnrealizedPL)))
 		require.NotNil(t, v.UnrealizedPLPct)
-		assert.True(t, dec("55000").Div(dec("1845000")).Mul(dec("100")).Sub(dec(*v.UnrealizedPLPct)).Abs().LessThan(dec("0.000000001")))
+		assert.Equal(t, "2.98", *v.UnrealizedPLPct, "55000 / 1845000, a percentage with 2 decimals")
 		assert.Equal(t, "MANUAL", v.PriceSource)
 		require.NotNil(t, v.Base)
 		assert.Equal(t, "IDR", v.Base.Currency)
@@ -398,7 +399,7 @@ func TestInvestmentListAndSummary(t *testing.T) {
 	assert.True(t, dec("1500").Equal(dec(l.Summary.TotalCost)))
 	assert.True(t, dec("100").Equal(dec(l.Summary.UnrealizedPL)))
 	require.NotNil(t, l.Summary.UnrealizedPLPct)
-	assert.True(t, dec("100").Div(dec("1500")).Mul(dec("100")).Sub(dec(*l.Summary.UnrealizedPLPct)).Abs().LessThan(dec("0.000001")))
+	assert.Equal(t, "6.67", *l.Summary.UnrealizedPLPct)
 	require.Len(t, l.Summary.Warnings, 1, "the SGD fund is left out and reported")
 	assert.Equal(t, "Singapore fund", l.Summary.Warnings[0].Label)
 

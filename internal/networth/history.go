@@ -126,6 +126,8 @@ func (s *Service) StartJobs(ctx context.Context, log zerolog.Logger) (stop func(
 type Point struct {
 	Date     string
 	NetWorth decimal.Decimal
+	// Investments is the portfolio value of that day, in the same currency as NetWorth.
+	Investments decimal.Decimal
 	// Live marks the point computed now for today (rather than read from a snapshot).
 	Live bool
 }
@@ -138,6 +140,8 @@ type History struct {
 	// ChangePct is the percentage change from the first to the last point; nil with
 	// fewer than two points or a first value of 0.
 	ChangePct *decimal.Decimal
+	// InvestmentsChangePct is the same for the portfolio value.
+	InvestmentsChangePct *decimal.Decimal
 }
 
 // Downsample keeps at most max points, always the first and the last, picking the
@@ -211,17 +215,26 @@ func (s *Service) History(ctx context.Context, spaceID uuid.UUID, rng string) (H
 		if d == todayStr { // replaced by the live point below
 			continue
 		}
-		h.Points = append(h.Points, Point{Date: d, NetWorth: sn.NetWorth})
+		h.Points = append(h.Points, Point{Date: d, NetWorth: sn.NetWorth, Investments: sn.Investments})
 	}
-	h.Points = append(h.Points, Point{Date: todayStr, NetWorth: live.NetWorth, Live: true})
+	liveInv := decimal.Zero
+	if live.Investments != nil {
+		liveInv = live.Investments.Value
+	}
+	h.Points = append(h.Points, Point{Date: todayStr, NetWorth: live.NetWorth, Investments: liveInv, Live: true})
 	h.Points = Downsample(h.Points, MaxHistoryPoints)
 
 	if len(h.Points) >= 2 {
-		first, last := h.Points[0].NetWorth, h.Points[len(h.Points)-1].NetWorth
-		if !first.IsZero() {
+		pctOf := func(first, last decimal.Decimal) *decimal.Decimal {
+			if first.IsZero() {
+				return nil
+			}
 			pct := last.Sub(first).Div(first.Abs()).Mul(decimal.NewFromInt(100)).Round(2)
-			h.ChangePct = &pct
+			return &pct
 		}
+		n := len(h.Points) - 1
+		h.ChangePct = pctOf(h.Points[0].NetWorth, h.Points[n].NetWorth)
+		h.InvestmentsChangePct = pctOf(h.Points[0].Investments, h.Points[n].Investments)
 	}
 	return h, nil
 }

@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/shopspring/decimal"
 
 	"github.com/JonathanRainee/hzzt/internal/auth"
 	"github.com/JonathanRainee/hzzt/internal/currency"
 	"github.com/JonathanRainee/hzzt/internal/platform/httpx"
+	"github.com/JonathanRainee/hzzt/internal/platform/money"
 	"github.com/JonathanRainee/hzzt/internal/spaces"
 )
 
@@ -33,15 +33,16 @@ func (h *Handler) Mount(r chi.Router) {
 		r.Use(h.auth.Middleware, h.spaces.Middleware)
 		r.Get("/spaces/{spaceId}/net-worth/summary", h.summary)
 		r.Get("/spaces/{spaceId}/net-worth/history", h.history)
+		r.Get("/spaces/{spaceId}/assets/summary", h.assetSummary)
 	})
 }
 
 // InvestmentsDTO is the investments section of the summary.
 type InvestmentsDTO struct {
-	Value           decimal.Decimal  `json:"value" swaggertype:"string"`
-	Cost            decimal.Decimal  `json:"cost" swaggertype:"string"`
-	UnrealizedPL    decimal.Decimal  `json:"unrealizedPl" swaggertype:"string"`
-	UnrealizedPLPct *decimal.Decimal `json:"unrealizedPlPct" swaggertype:"string"` // a percentage; null when the cost is 0
+	Value           money.Amount `json:"value" swaggertype:"string"`
+	Cost            money.Amount `json:"cost" swaggertype:"string"`
+	UnrealizedPL    money.Amount `json:"unrealizedPl" swaggertype:"string"`
+	UnrealizedPLPct *money.Pct   `json:"unrealizedPlPct" swaggertype:"string"` // a percentage; null when the cost is 0
 }
 
 // SummaryDTO is the net-worth summary in the space's base currency.
@@ -49,25 +50,26 @@ type SummaryDTO struct {
 	Currency     string             `json:"currency" example:"USD"`
 	TrackingMode string             `json:"trackingMode" enums:"FULL_NET_WORTH,CASH_ONLY"`
 	AsOf         time.Time          `json:"asOf"`
-	Cash         decimal.Decimal    `json:"cash" swaggertype:"string"`
+	Cash         money.Amount       `json:"cash" swaggertype:"string"`
 	Investments  *InvestmentsDTO    `json:"investments,omitempty"`
-	FixedAssets  *decimal.Decimal   `json:"fixedAssets,omitempty" swaggertype:"string"`
-	Receivables  *decimal.Decimal   `json:"receivables,omitempty" swaggertype:"string"`
-	Liabilities  *decimal.Decimal   `json:"liabilities,omitempty" swaggertype:"string"`
-	NetWorth     decimal.Decimal    `json:"netWorth" swaggertype:"string"`
+	FixedAssets  *money.Amount      `json:"fixedAssets,omitempty" swaggertype:"string"`
+	Receivables  *money.Amount      `json:"receivables,omitempty" swaggertype:"string"`
+	Liabilities  *money.Amount      `json:"liabilities,omitempty" swaggertype:"string"`
+	NetWorth     money.Amount       `json:"netWorth" swaggertype:"string"`
 	Warnings     []currency.Warning `json:"warnings"`
 }
 
 // ToDTO converts a summary.
 func ToDTO(s Summary) SummaryDTO {
 	d := SummaryDTO{
-		Currency: s.Currency, TrackingMode: s.TrackingMode, AsOf: s.AsOf, Cash: s.Cash, NetWorth: s.NetWorth,
-		FixedAssets: s.FixedAssets, Receivables: s.Receivables, Liabilities: s.Liabilities, Warnings: s.Warnings,
+		Currency: s.Currency, TrackingMode: s.TrackingMode, AsOf: s.AsOf, Cash: money.NewAmount(s.Cash, s.Currency), NetWorth: money.NewAmount(s.NetWorth, s.Currency),
+		FixedAssets: money.AmountPtr(s.FixedAssets, s.Currency), Receivables: money.AmountPtr(s.Receivables, s.Currency),
+		Liabilities: money.AmountPtr(s.Liabilities, s.Currency), Warnings: s.Warnings,
 	}
 	if s.Investments != nil {
 		d.Investments = &InvestmentsDTO{
-			Value: s.Investments.Value, Cost: s.Investments.Cost, UnrealizedPL: s.Investments.UnrealizedPL,
-			UnrealizedPLPct: s.Investments.UnrealizedPLPct,
+			Value: money.NewAmount(s.Investments.Value, s.Currency), Cost: money.NewAmount(s.Investments.Cost, s.Currency),
+			UnrealizedPL: money.NewAmount(s.Investments.UnrealizedPL, s.Currency), UnrealizedPLPct: money.PctPtr(s.Investments.UnrealizedPLPct),
 		}
 	}
 	return d
@@ -96,17 +98,21 @@ func (h *Handler) summary(w http.ResponseWriter, r *http.Request) {
 
 // PointDTO is one day of the net-worth history.
 type PointDTO struct {
-	Date     string          `json:"date" example:"2026-11-18"`
-	NetWorth decimal.Decimal `json:"netWorth" swaggertype:"string"`
-	Live     bool            `json:"live,omitempty"` // the point computed now for today
+	Date     string       `json:"date" example:"2026-11-18"`
+	NetWorth money.Amount `json:"netWorth" swaggertype:"string"`
+	// Investments is the portfolio value of the day (the investments line of the net worth).
+	Investments money.Amount `json:"investments" swaggertype:"string"`
+	Live        bool         `json:"live,omitempty"` // the point computed now for today
 }
 
 // HistoryDTO is the net-worth graph of a space.
 type HistoryDTO struct {
-	Currency  string           `json:"currency" example:"USD"`
-	Range     string           `json:"range" enums:"1M,3M,6M,1Y,ALL"`
-	Points    []PointDTO       `json:"points"`
-	ChangePct *decimal.Decimal `json:"changePct" swaggertype:"string"` // first → last point, a percentage; null when it cannot be computed
+	Currency  string     `json:"currency" example:"USD"`
+	Range     string     `json:"range" enums:"1M,3M,6M,1Y,ALL"`
+	Points    []PointDTO `json:"points"`
+	ChangePct *money.Pct `json:"changePct" swaggertype:"string"` // first → last point, a percentage; null when it cannot be computed
+	// InvestmentsChangePct is the same change for the portfolio value.
+	InvestmentsChangePct *money.Pct `json:"investmentsChangePct" swaggertype:"string"`
 }
 
 // history godoc
@@ -132,10 +138,16 @@ func (h *Handler) history(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, err)
 		return
 	}
-	out := HistoryDTO{Currency: res.Currency, Range: res.Range, ChangePct: res.ChangePct, Points: make([]PointDTO, 0, len(res.Points))}
+	out := HistoryDTO{Currency: res.Currency, Range: res.Range, ChangePct: money.PctPtr(res.ChangePct), InvestmentsChangePct: money.PctPtr(res.InvestmentsChangePct), Points: make([]PointDTO, 0, len(res.Points))}
 	for _, p := range res.Points {
-		out.Points = append(out.Points, PointDTO(p))
+		out.Points = append(out.Points, PointDTO{Date: p.Date, NetWorth: money.NewAmount(p.NetWorth, res.Currency), Investments: money.NewAmount(p.Investments, res.Currency), Live: p.Live})
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(out)
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
 }

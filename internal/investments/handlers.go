@@ -15,6 +15,7 @@ import (
 	"github.com/JonathanRainee/hzzt/internal/db/sqlc"
 	"github.com/JonathanRainee/hzzt/internal/platform/apperror"
 	"github.com/JonathanRainee/hzzt/internal/platform/httpx"
+	"github.com/JonathanRainee/hzzt/internal/platform/money"
 	"github.com/JonathanRainee/hzzt/internal/spaces"
 )
 
@@ -51,6 +52,9 @@ func (h *Handler) Mount(r chi.Router) {
 		r.Use(h.auth.Middleware, h.spaces.Middleware)
 		const p = "/spaces/{spaceId}/investments"
 		r.Get(p, h.list)
+		r.Get(p+"/grouped", h.grouped)
+		r.Get(p+"/wrappers", h.wrappers)
+		r.Patch(p+"/wrappers/{assetType}/{wrapperKey}", h.setWrapperTarget)
 		r.Post(p, h.create)
 		r.Get(p+"/{id}", h.get)
 		r.Patch(p+"/{id}", h.update)
@@ -90,8 +94,12 @@ type InvestmentDTO struct {
 	EstimatedAnnualChangePct decimal.Decimal  `json:"estimatedAnnualChangePct" swaggertype:"string"`
 	ManualFxRate             *decimal.Decimal `json:"manualFxRate" swaggertype:"string"`
 	Details                  any              `json:"details" swaggertype:"object"`
-	InstrumentID             *uuid.UUID       `json:"instrumentId"`
-	IsShared                 bool             `json:"isShared"`
+	// Wrapper is the exchange, broker or platform the position is held on; null when unknown.
+	Wrapper      *string    `json:"wrapper" example:"Binance"`
+	InstrumentID *uuid.UUID `json:"instrumentId"`
+	IsShared     bool       `json:"isShared"`
+	// PctOfTotal is this investment's share of the portfolio's base-currency value (only in the list response; null without a base value).
+	PctOfTotal *money.Pct `json:"pctOfTotal"`
 	// Valuation is the viewer's part: the whole investment unless it is shared.
 	Valuation Valuation `json:"valuation"`
 	// TotalValuation is the whole investment's valuation; present only for shared investments.
@@ -133,10 +141,11 @@ func toParticipantDTOs(ps []ParticipantView) []ParticipantDTO {
 
 // RealizedPLDTO is the total realized profit/loss of an investment's SELL transactions.
 type RealizedPLDTO struct {
-	Amount   decimal.Decimal  `json:"amount" swaggertype:"string" example:"5990"`
-	Currency string           `json:"currency" example:"USD"`
-	Base     *decimal.Decimal `json:"base" swaggertype:"string"`
-	Sells    int              `json:"sells"`
+	// Amount is in the investment's quote currency, Base in the space's base currency (null without an FX rate).
+	Amount   money.Amount  `json:"amount" swaggertype:"string" example:"5990.00"`
+	Currency string        `json:"currency" example:"USD"`
+	Base     *money.Amount `json:"base" swaggertype:"string"`
+	Sells    int           `json:"sells"`
 }
 
 func toDTO(it Item) InvestmentDTO {
@@ -145,10 +154,11 @@ func toDTO(it Item) InvestmentDTO {
 		ID: i.ID, AssetType: i.AssetType, PriceMode: i.PriceMode, Name: i.Name, Symbol: i.Symbol, Icon: i.Icon,
 		QuoteCurrency: strings.TrimSpace(i.QuoteCurrency), Quantity: i.Quantity, AvgBuyPrice: i.AvgBuyPrice,
 		ManualPrice: i.ManualPrice, Fees: i.Fees, EstimatedAnnualChangePct: i.EstimatedAnnualChangePct,
-		Details: it.Details, IsShared: i.IsShared, Valuation: it.Valuation, TotalValuation: it.TotalValuation,
+		Details: it.Details, Wrapper: i.Wrapper, IsShared: i.IsShared, Valuation: it.Valuation, TotalValuation: it.TotalValuation,
 		Ownership: it.Ownership, MyShareBps: it.MyShareBps, Participants: toParticipantDTOs(it.Participants),
 		RealizedPL: RealizedPLDTO{
-			Amount: it.Realized.Amount, Currency: strings.TrimSpace(i.QuoteCurrency), Base: it.Realized.Base, Sells: it.Realized.Sells,
+			Amount: money.NewAmount(it.Realized.Amount, i.QuoteCurrency), Currency: strings.TrimSpace(i.QuoteCurrency),
+			Base: money.AmountPtr(it.Realized.Base, it.Realized.BaseCurrency), Sells: it.Realized.Sells,
 		},
 		CreatedAt: i.CreatedAt.UTC(), UpdatedAt: i.UpdatedAt.UTC(),
 	}
@@ -227,16 +237,10 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	includeShared := false
-	for _, inc := range strings.Split(r.URL.Query().Get("include"), ",") {
-		switch strings.ToLower(strings.TrimSpace(inc)) {
-		case "":
-		case "shared":
-			includeShared = true
-		default:
-			httpx.WriteError(w, r, apperror.Validation("Validation failed", map[string]any{"include": "must be: shared"}))
-			return
-		}
+	includeShared, err := parseInclude(r)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
 	}
 	user, _ := auth.UserFromContext(r.Context())
 	res, err := h.svc.List(r.Context(), spaces.SpaceIDFromContext(r.Context()), at, includeShared, user.ID)
@@ -245,10 +249,28 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := ListResponse{Items: make([]InvestmentDTO, 0, len(res.Items)), Summary: res.Summary}
-	for _, it := range res.Items {
-		out.Items = append(out.Items, toDTO(it))
+	pcts := ItemPcts(res.Items)
+	for i, it := range res.Items {
+		d := toDTO(it)
+		d.PctOfTotal = money.PctPtr(pcts[i])
+		out.Items = append(out.Items, d)
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// parseInclude reads ?include=shared.
+func parseInclude(r *http.Request) (bool, error) {
+	includeShared := false
+	for _, inc := range strings.Split(r.URL.Query().Get("include"), ",") {
+		switch strings.ToLower(strings.TrimSpace(inc)) {
+		case "":
+		case "shared":
+			includeShared = true
+		default:
+			return false, apperror.Validation("Validation failed", map[string]any{"include": "must be: shared"})
+		}
+	}
+	return includeShared, nil
 }
 
 // CreateRequestDoc documents the create body; the real decoding is keyed on assetType.
@@ -439,6 +461,13 @@ type ParticipantsResponse struct {
 	Items []ParticipantDTO `json:"items"`
 }
 
+// SetParticipantsResponse is the new participant list plus the investment as it is now, so the
+// client can update in place (isShared, participants, shared valuation) without refetching.
+type SetParticipantsResponse struct {
+	Items      []ParticipantDTO `json:"items"`
+	Investment InvestmentDTO    `json:"investment"`
+}
+
 // participants godoc
 //
 //	@Summary	List who an investment is shared with (owner only)
@@ -476,7 +505,7 @@ func (h *Handler) participants(w http.ResponseWriter, r *http.Request) {
 //	@Param			spaceId	path		string					true	"Space ID"
 //	@Param			id		path		string					true	"Investment ID"
 //	@Param			body	body		SetParticipantsRequest	true	"Participants"
-//	@Success		200		{object}	ParticipantsResponse
+//	@Success		200		{object}	SetParticipantsResponse
 //	@Failure		400		{object}	httpx.ErrorEnvelope
 //	@Failure		403		{object}	httpx.ErrorEnvelope	"OWNER_ONLY"
 //	@Failure		404		{object}	httpx.ErrorEnvelope
@@ -508,33 +537,55 @@ func (h *Handler) setParticipants(w http.ResponseWriter, r *http.Request) {
 		}
 		in = append(in, pi)
 	}
-	ps, err := h.svc.SetParticipants(r.Context(), spaces.SpaceIDFromContext(r.Context()), id, user, in)
+	spaceID := spaces.SpaceIDFromContext(r.Context())
+	ps, err := h.svc.SetParticipants(r.Context(), spaceID, id, user, in)
+	var it Item
+	if err == nil {
+		it, err = h.svc.Get(r.Context(), spaceID, user.ID, id)
+	}
 	if err != nil {
 		httpx.WriteError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, ParticipantsResponse{Items: toParticipantDTOs(ps)})
+	writeJSON(w, http.StatusOK, SetParticipantsResponse{Items: toParticipantDTOs(ps), Investment: toDTO(it)})
 }
 
 // stopSharing godoc
 //
-//	@Summary	Stop sharing: 100% returns to the owner and everyone else is removed (owner only)
-//	@Tags		sharing
-//	@Security	BearerAuth
-//	@Param		spaceId	path	string	true	"Space ID"
-//	@Param		id		path	string	true	"Investment ID"
-//	@Success	204
+//	@Summary		Stop sharing: 100% returns to the owner and everyone else is removed (owner only)
+//	@Description	Answers 204. With `?return=investment` it answers 200 with the investment as it is now, so the client can update in place.
+//	@Tags			sharing
+//	@Security		BearerAuth
+//	@Produce		json
+//	@Param			spaceId	path	string	true	"Space ID"
+//	@Param			id		path	string	true	"Investment ID"
+//	@Param			return	query	string	false	"investment: answer 200 with the investment instead of 204"
+//	@Success		204
+//	@Success		200	{object}	InvestmentDTO
 //	@Failure	403	{object}	httpx.ErrorEnvelope	"OWNER_ONLY"
 //	@Failure	404	{object}	httpx.ErrorEnvelope
 //	@Router		/spaces/{spaceId}/investments/{id}/participants [delete]
 func (h *Handler) stopSharing(w http.ResponseWriter, r *http.Request) {
 	user, _ := auth.UserFromContext(r.Context())
+	spaceID := spaces.SpaceIDFromContext(r.Context())
 	id, err := investmentID(r)
+	ret := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("return")))
+	if err == nil && ret != "" && ret != "investment" {
+		err = apperror.Validation("Validation failed", map[string]any{"return": "must be: investment"})
+	}
 	if err == nil {
-		err = h.svc.StopSharing(r.Context(), spaces.SpaceIDFromContext(r.Context()), id, user)
+		err = h.svc.StopSharing(r.Context(), spaceID, id, user)
+	}
+	var it Item
+	if err == nil && ret == "investment" {
+		it, err = h.svc.Get(r.Context(), spaceID, user.ID, id)
 	}
 	if err != nil {
 		httpx.WriteError(w, r, err)
+		return
+	}
+	if ret == "investment" {
+		writeJSON(w, http.StatusOK, toDTO(it))
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -623,6 +674,12 @@ type acceptRequest struct {
 	SpaceID uuid.UUID `json:"spaceId" validate:"required" swaggertype:"string"`
 }
 
+// AcceptResponse says where the accepted investment can be opened: GET /spaces/{spaceId}/investments/{investmentId}.
+type AcceptResponse struct {
+	SpaceID      uuid.UUID `json:"spaceId"`
+	InvestmentID uuid.UUID `json:"investmentId"`
+}
+
 func participantID(r *http.Request) (uuid.UUID, error) {
 	id, err := uuid.Parse(chi.URLParam(r, "participantId"))
 	if err != nil {
@@ -638,9 +695,10 @@ func participantID(r *http.Request) (uuid.UUID, error) {
 //	@Tags			sharing
 //	@Security		BearerAuth
 //	@Accept			json
-//	@Param			participantId	path	string			true	"Invitation (participant) ID"
-//	@Param			body			body	acceptRequest	true	"Space to attach it to"
-//	@Success		204
+//	@Param			participantId	path		string			true	"Invitation (participant) ID"
+//	@Produce		json
+//	@Param			body			body		acceptRequest	true	"Space to attach it to"
+//	@Success		200				{object}	AcceptResponse
 //	@Failure		400	{object}	httpx.ErrorEnvelope
 //	@Failure		404	{object}	httpx.ErrorEnvelope
 //	@Failure		409	{object}	httpx.ErrorEnvelope	"SHARE_INVITATION_ANSWERED"
@@ -652,14 +710,15 @@ func (h *Handler) acceptInvitation(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		req, err = httpx.DecodeAndValidate[acceptRequest](r)
 	}
+	var invID uuid.UUID
 	if err == nil {
-		err = h.svc.AcceptInvitation(r.Context(), user, id, req.SpaceID)
+		invID, err = h.svc.AcceptInvitation(r.Context(), user, id, req.SpaceID)
 	}
 	if err != nil {
 		httpx.WriteError(w, r, err)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	writeJSON(w, http.StatusOK, AcceptResponse{SpaceID: req.SpaceID, InvestmentID: invID})
 }
 
 // declineInvitation godoc

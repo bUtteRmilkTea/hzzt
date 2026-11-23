@@ -199,8 +199,8 @@ func TestAcceptanceSharedAllocationAcrossSpaces(t *testing.T) {
 
 	bobInv := s.shareInvitations(bob)[0]
 	carolInv := s.shareInvitations(carol)[0]
-	require.Equal(t, http.StatusNoContent, s.acceptShare(bob, bobInv.ParticipantID, spaceIDOf(bob)).Status)
-	require.Equal(t, http.StatusNoContent, s.acceptShare(carol, carolInv.ParticipantID, spaceIDOf(carol)).Status)
+	require.Equal(t, http.StatusOK, s.acceptShare(bob, bobInv.ParticipantID, spaceIDOf(bob)).Status)
+	require.Equal(t, http.StatusOK, s.acceptShare(carol, carolInv.ParticipantID, spaceIDOf(carol)).Status)
 
 	t.Run("acceptance: 50/30/20 of 1,000.01 → 500.01 / 300.00 / 200.00, summing exactly", func(t *testing.T) {
 		bobList := s.sharedList(bob, spaceIDOf(bob), "?include=shared")
@@ -280,7 +280,7 @@ func TestUnregisteredAndRegisteredEmailsLookIdentical(t *testing.T) {
 		inv := s.shareInvitations(ghost)
 		require.Len(t, inv, 1)
 		assert.Equal(t, "Apple 2", inv[0].Investment.Name)
-		require.Equal(t, http.StatusNoContent, s.acceptShare(ghost, inv[0].ParticipantID, spaceIDOf(ghost)).Status)
+		require.Equal(t, http.StatusOK, s.acceptShare(ghost, inv[0].ParticipantID, spaceIDOf(ghost)).Status)
 		got := s.sharedList(ghost, spaceIDOf(ghost), "?include=shared")
 		require.Len(t, got.Items, 1)
 		assert.Equal(t, 5000, got.Items[0].MyShareBps)
@@ -420,13 +420,13 @@ func TestReplacementListSemantics(t *testing.T) {
 		bobU := s.register("bob@example.com")
 		out := e.mustPut(owner("50"), emailP("bob@example.com", "Bob", "50"))
 		id := byName(out.Items, "Bob").ID
-		require.Equal(t, http.StatusNoContent, s.acceptShare(bobU, id, spaceIDOf(bobU)).Status)
+		require.Equal(t, http.StatusOK, s.acceptShare(bobU, id, spaceIDOf(bobU)).Status)
 		e.mustPut(owner("100")) // removes Bob
 		assert.Empty(t, s.sharedList(bobU, spaceIDOf(bobU), "?include=shared").Items)
 		out = e.mustPut(owner("50"), emailP("bob@example.com", "Bob", "50"))
 		require.Len(t, s.shareInvitations(bobU), 1, "a fresh invitation")
 		assert.NotEqual(t, id, byName(out.Items, "Bob").ID)
-		require.Equal(t, http.StatusNoContent, s.acceptShare(bobU, s.shareInvitations(bobU)[0].ParticipantID, spaceIDOf(bobU)).Status)
+		require.Equal(t, http.StatusOK, s.acceptShare(bobU, s.shareInvitations(bobU)[0].ParticipantID, spaceIDOf(bobU)).Status)
 	})
 }
 
@@ -461,7 +461,7 @@ func TestSharedInvestmentInvitationLifecycle(t *testing.T) {
 	})
 
 	t.Run("accept, then it cannot be answered again", func(t *testing.T) {
-		require.Equal(t, http.StatusNoContent, s.acceptShare(bob, id, spaceIDOf(bob)).Status)
+		require.Equal(t, http.StatusOK, s.acceptShare(bob, id, spaceIDOf(bob)).Status)
 		res := s.acceptShare(bob, id, spaceIDOf(bob))
 		require.Equal(t, http.StatusConflict, res.Status)
 		assert.Equal(t, "SHARE_INVITATION_ANSWERED", errCode(t, res))
@@ -507,7 +507,7 @@ func TestLeavingASharedInvestment(t *testing.T) {
 
 	t.Run("only accepted participants can leave", func(t *testing.T) {
 		assert.Equal(t, http.StatusNotFound, s.leaveShare(bob, id).Status, "still just invited")
-		require.Equal(t, http.StatusNoContent, s.acceptShare(bob, id, spaceIDOf(bob)).Status)
+		require.Equal(t, http.StatusOK, s.acceptShare(bob, id, spaceIDOf(bob)).Status)
 		assert.Equal(t, http.StatusNotFound, s.leaveShare(e.owner, id).Status, "not mine")
 		ownerPart := e.participants()[0].ID
 		res := s.leaveShare(e.owner, ownerPart)
@@ -564,7 +564,7 @@ func TestStopSharingReturnsEverythingToTheOwner(t *testing.T) {
 	max := s.register("max@example.com")
 	s.join(e.owner, e.sid, max)
 	out := e.mustPut(owner("50"), emailP("bob@example.com", "Bob", "30"), nameP("Mum", "20"))
-	require.Equal(t, http.StatusNoContent, s.acceptShare(bob, byName(out.Items, "Bob").ID, spaceIDOf(bob)).Status)
+	require.Equal(t, http.StatusOK, s.acceptShare(bob, byName(out.Items, "Bob").ID, spaceIDOf(bob)).Status)
 
 	res := s.Do(http.MethodDelete, e.partsURL(), nil, bearer(e.owner.AccessToken))
 	require.Equal(t, http.StatusNoContent, res.Status)
@@ -597,7 +597,7 @@ func TestDeletingTheInvestmentHidesItForEveryone(t *testing.T) {
 	e := newShareEnv(t, s)
 	bob, carol := s.register("bob@example.com"), s.register("carol@example.com")
 	out := e.mustPut(owner("50"), emailP("bob@example.com", "Bob", "30"), emailP("carol@example.com", "Carol", "20"))
-	require.Equal(t, http.StatusNoContent, s.acceptShare(bob, byName(out.Items, "Bob").ID, spaceIDOf(bob)).Status)
+	require.Equal(t, http.StatusOK, s.acceptShare(bob, byName(out.Items, "Bob").ID, spaceIDOf(bob)).Status)
 
 	require.Equal(t, http.StatusNoContent, s.Do(http.MethodDelete, invURL(e.sid, "/", e.inv.ID), nil, bearer(e.owner.AccessToken)).Status)
 	assert.Empty(t, s.sharedList(bob, spaceIDOf(bob), "?include=shared").Items)
@@ -614,7 +614,7 @@ func TestSharedInvestmentsAreOwnerOnlyAndReadOnlyForOthers(t *testing.T) {
 	max := s.register("max@example.com")
 	s.join(e.owner, e.sid, max) // a MEMBER of the owner's space
 	out := e.mustPut(owner("50"), emailP("bob@example.com", "Bob", "50"))
-	require.Equal(t, http.StatusNoContent, s.acceptShare(bob, byName(out.Items, "Bob").ID, spaceIDOf(bob)).Status)
+	require.Equal(t, http.StatusOK, s.acceptShare(bob, byName(out.Items, "Bob").ID, spaceIDOf(bob)).Status)
 	w := s.newWallet(e.owner, e.sid, wal("Cash"))
 	require.Equal(t, http.StatusOK, s.Do(http.MethodPut, walURL(e.sid, "/", w.ID, "/balance"), map[string]any{"newBalance": "10000"}, bearer(e.owner.AccessToken)).Status)
 
@@ -710,8 +710,8 @@ func TestSharedRealizedPLAddsUpToTheCent(t *testing.T) {
 	require.Equal(t, http.StatusOK, out.Status, string(out.Body))
 	var ps participantsResp
 	out.JSON(t, &ps)
-	require.Equal(t, http.StatusNoContent, s.acceptShare(bob, byName(ps.Items, "Bob").ID, spaceIDOf(bob)).Status)
-	require.Equal(t, http.StatusNoContent, s.acceptShare(carol, byName(ps.Items, "Carol").ID, spaceIDOf(carol)).Status)
+	require.Equal(t, http.StatusOK, s.acceptShare(bob, byName(ps.Items, "Bob").ID, spaceIDOf(bob)).Status)
+	require.Equal(t, http.StatusOK, s.acceptShare(carol, byName(ps.Items, "Carol").ID, spaceIDOf(carol)).Status)
 
 	w := s.newWallet(e.owner, e.sid, wal("Cash"))
 	res := s.Do(http.MethodPost, trURL(e.sid), map[string]any{"from": leg(inv.ID, "1", "1.01", ""), "to": walletEnd(w)}, bearer(e.owner.AccessToken)) // realized 0.01
@@ -747,7 +747,7 @@ func TestSharedInListingFiltersAndIsolation(t *testing.T) {
 	e := newShareEnv(t, s)
 	bob := s.register("bob@example.com")
 	out := e.mustPut(owner("50"), emailP("bob@example.com", "Bob", "50"))
-	require.Equal(t, http.StatusNoContent, s.acceptShare(bob, byName(out.Items, "Bob").ID, spaceIDOf(bob)).Status)
+	require.Equal(t, http.StatusOK, s.acceptShare(bob, byName(out.Items, "Bob").ID, spaceIDOf(bob)).Status)
 	own := (&invEnv{s: s, u: bob, sid: spaceIDOf(bob)}).must(clone(aapl, "name", "Bob's own", "manualPrice", "10"))
 
 	l := s.sharedList(bob, spaceIDOf(bob), "?include=shared")
@@ -808,7 +808,7 @@ func TestSharedInInvestmentDetailForTheParticipant(t *testing.T) {
 	out := e.mustPut(owner("30"), emailP("bob@example.com", "Bob", "20"), emailP("carol@example.com", "Carol", "10"),
 		emailP("dave@example.com", "Dave", "10"), emailP("erin@example.com", "Erin", "10"), emailP("fred@example.com", "Fred", "20"))
 	acc := func(u session, name string) {
-		require.Equal(t, http.StatusNoContent, s.acceptShare(u, byName(out.Items, name).ID, spaceIDOf(u)).Status)
+		require.Equal(t, http.StatusOK, s.acceptShare(u, byName(out.Items, name).ID, spaceIDOf(u)).Status)
 	}
 	acc(bob, "Bob")
 	acc(erin, "Erin")
@@ -834,7 +834,7 @@ func TestSharedInInvestmentDetailForTheParticipant(t *testing.T) {
 		assert.Equal(t, 2000, it.MyShareBps)
 		require.NotNil(t, it.TotalValuation)
 		assert.True(t, dec("1000.01").Equal(dec(it.TotalValuation.MarketValue)), "the whole in the quote currency")
-		assert.True(t, dec("200.002").Equal(dec(it.Valuation.MarketValue)), "Bob's 20%%: %s", it.Valuation.MarketValue)
+		assert.Equal(t, "200.00", it.Valuation.MarketValue, "Bob's 20%% of 1000.01, shown with 2 decimals")
 		require.NotNil(t, it.Valuation.Base)
 		assert.Equal(t, "IDR", it.Valuation.Base.Currency, "valued in Bob's base currency, not the owner's")
 		assert.True(t, dec("3200032").Equal(dec(it.Valuation.Base.MarketValue)), it.Valuation.Base.MarketValue)
@@ -874,5 +874,66 @@ func TestSharedInInvestmentDetailForTheParticipant(t *testing.T) {
 		res.JSON(t, &it)
 		assert.Equal(t, "OWNER", it.Ownership)
 		assert.Equal(t, 5000, it.MyShareBps)
+	})
+}
+
+func TestShareFlowResponsesLetTheClientUpdateInPlace(t *testing.T) {
+	s := NewTestServer(t)
+	e := newShareEnv(t, s)
+	bob := s.register("bob@example.com")
+
+	t.Run("PUT participants returns the investment as it is now", func(t *testing.T) {
+		res := e.put(e.owner, owner("60"), emailP("bob@example.com", "Bob", "40"))
+		require.Equal(t, http.StatusOK, res.Status, string(res.Body))
+		var out struct {
+			Items      []participantBody `json:"items"`
+			Investment shareListItem     `json:"investment"`
+		}
+		res.JSON(t, &out)
+		require.Len(t, out.Items, 2)
+		assert.Equal(t, e.inv.ID, out.Investment.ID)
+		assert.True(t, out.Investment.IsShared, "fresh isShared")
+		assert.Len(t, out.Investment.Participants, 2)
+		assert.Equal(t, 6000, out.Investment.MyShareBps)
+		require.NotNil(t, out.Investment.TotalValuation)
+		assert.True(t, dec("600.01").Equal(dec(out.Investment.Valuation.MarketValue)) || dec("600").Equal(dec(out.Investment.Valuation.MarketValue)), out.Investment.Valuation.MarketValue)
+		// GET participants keeps its shape
+		assert.NotContains(t, string(s.Get(e.partsURL(), bearer(e.owner.AccessToken)).Body), `"investment"`)
+	})
+
+	t.Run("accept returns where to open it, and the participant can", func(t *testing.T) {
+		inv := s.shareInvitations(bob)[0]
+		res := s.acceptShare(bob, inv.ParticipantID, spaceIDOf(bob))
+		require.Equal(t, http.StatusOK, res.Status, string(res.Body))
+		var got struct {
+			SpaceID      string `json:"spaceId"`
+			InvestmentID string `json:"investmentId"`
+		}
+		res.JSON(t, &got)
+		assert.Equal(t, spaceIDOf(bob), got.SpaceID)
+		assert.Equal(t, e.inv.ID, got.InvestmentID)
+		open := s.Get(invURL(got.SpaceID, "/", got.InvestmentID), bearer(bob.AccessToken))
+		require.Equal(t, http.StatusOK, open.Status, string(open.Body))
+		var it shareListItem
+		open.JSON(t, &it)
+		assert.Equal(t, "SHARED_IN", it.Ownership)
+		assert.Equal(t, 4000, it.MyShareBps)
+	})
+
+	t.Run("stop sharing: 204 by default, the investment with ?return=investment", func(t *testing.T) {
+		bad := s.Do(http.MethodDelete, e.partsURL()+"?return=nope", nil, bearer(e.owner.AccessToken))
+		assert.Equal(t, http.StatusBadRequest, bad.Status)
+		assert.True(t, e.invEnv().get(e.inv.ID).IsShared, "a rejected call changed nothing")
+
+		res := s.Do(http.MethodDelete, e.partsURL()+"?return=investment", nil, bearer(e.owner.AccessToken))
+		require.Equal(t, http.StatusOK, res.Status, string(res.Body))
+		var it shareListItem
+		res.JSON(t, &it)
+		assert.Equal(t, e.inv.ID, it.ID)
+		assert.False(t, it.IsShared)
+		assert.Equal(t, 10000, it.MyShareBps)
+
+		e.mustPut(owner("50"), emailP("bob@example.com", "Bob", "50"))
+		assert.Equal(t, http.StatusNoContent, s.Do(http.MethodDelete, e.partsURL(), nil, bearer(e.owner.AccessToken)).Status)
 	})
 }

@@ -430,7 +430,7 @@ func (q *Queries) ListShareChanges(ctx context.Context, investmentID uuid.UUID) 
 }
 
 const listSharedInInvestments = `-- name: ListSharedInInvestments :many
-SELECT i.id, i.space_id, i.asset_type, i.price_mode, i.name, i.symbol, i.icon, i.quote_currency, i.quantity, i.avg_buy_price, i.manual_price, i.fees, i.manual_current_value, i.purchase_date, i.estimated_annual_change_pct, i.manual_fx_rate, i.details, i.instrument_id, i.is_shared, i.created_by_id, i.created_at, i.updated_at, i.deleted_at, p.share_bps AS my_share_bps, p.id AS my_participant_id
+SELECT i.id, i.space_id, i.asset_type, i.price_mode, i.name, i.symbol, i.icon, i.quote_currency, i.quantity, i.avg_buy_price, i.manual_price, i.fees, i.manual_current_value, i.purchase_date, i.estimated_annual_change_pct, i.manual_fx_rate, i.details, i.instrument_id, i.is_shared, i.created_by_id, i.created_at, i.updated_at, i.deleted_at, i.wrapper, p.share_bps AS my_share_bps, p.id AS my_participant_id
 FROM investment_participants p
 JOIN investments i ON i.id = p.investment_id AND i.deleted_at IS NULL AND i.space_id <> p.attached_space_id
 WHERE p.attached_space_id = $1 AND p.status = 'ACTIVE' AND p.role = 'PARTICIPANT'
@@ -467,6 +467,7 @@ type ListSharedInInvestmentsRow struct {
 	CreatedAt                time.Time           `json:"created_at"`
 	UpdatedAt                time.Time           `json:"updated_at"`
 	DeletedAt                *time.Time          `json:"deleted_at"`
+	Wrapper                  *string             `json:"wrapper"`
 	MyShareBps               int32               `json:"my_share_bps"`
 	MyParticipantID          uuid.UUID           `json:"my_participant_id"`
 }
@@ -505,6 +506,7 @@ func (q *Queries) ListSharedInInvestments(ctx context.Context, arg ListSharedInI
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.Wrapper,
 			&i.MyShareBps,
 			&i.MyParticipantID,
 		); err != nil {

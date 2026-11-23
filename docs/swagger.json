@@ -1103,6 +1103,9 @@
                 "consumes": [
                     "application/json"
                 ],
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "sharing"
                 ],
@@ -1126,8 +1129,11 @@
                     }
                 ],
                 "responses": {
-                    "204": {
-                        "description": "No Content"
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/investments.AcceptResponse"
+                        }
                     },
                     "400": {
                         "description": "Bad Request",
@@ -1477,6 +1483,46 @@
                 "responses": {
                     "204": {
                         "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/spaces/{spaceId}/assets/summary": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Cash per wallet (with its base-currency balance and share of the cash total), investments per asset type (value, unrealised profit/loss, share of the investments total), and fixed assets, money owed (receivables) and debts (liabilities) with their items, all converted to the space base currency with one FX snapshot, so the totals equal GET /net-worth/summary. Investments count my share, shared-in ones included. Anything without a usable FX rate has a null base value, is left out of the totals and reported in `warnings`. Amounts show no decimals for IDR and JPY and 2 for every other currency; percentages have 2 decimals and the slices of a section add up to exactly 100.00. In CASH_ONLY tracking mode only `cash` is returned.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "net-worth"
+                ],
+                "summary": "The asset page in one response",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Space ID",
+                        "name": "spaceId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/networth.AssetSummaryDTO"
+                        }
                     },
                     "404": {
                         "description": "Not Found",
@@ -2677,6 +2723,194 @@
                 }
             }
         },
+        "/spaces/{spaceId}/investments/grouped": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Groups the same valued list as GET /investments by asset type, then by wrapper (exchange, broker or platform; compared case- and whitespace-insensitively; none is `wrapper: null`, key `_unassigned`). Sums use the viewer's base-currency values, so they equal `summary` of the flat list; items without a usable FX rate are listed but left out of every sum and reported in `warnings`. `pctOfCategory` and `pctOfTotal` are percentages with 2 decimals whose slices add up to exactly 100.00 (null when the denominator is 0), so pie data is `categories[].pctOfTotal` and `wrappers[].pctOfCategory`. `items=false` leaves the items out.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "investments"
+                ],
+                "summary": "Investments grouped by asset type and wrapper",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Space ID",
+                        "name": "spaceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "shared: also group investments other people shared into this space (valued for my share)",
+                        "name": "include",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "false: omit the items of each wrapper (default true)",
+                        "name": "items",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/investments.GroupedResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/spaces/{spaceId}/investments/wrappers": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Per asset type: each wrapper (exchange, broker or platform) with its `targetPct` (null when none is set), its `actualPct` share of the asset type's base-currency value and `driftPct` (actual - target), plus the type's `assignedPct` and `unallocatedPct` (100 - assigned). A wrapper whose percentage is set but that no longer holds any investment is still listed (actualPct 0.00). The same fields are embedded in GET /investments/grouped.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "investments"
+                ],
+                "summary": "Planned and actual share of every wrapper",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Space ID",
+                        "name": "spaceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "shared: also count investments other people shared into this space for the actual share",
+                        "name": "include",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/investments.AllocationsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/spaces/{spaceId}/investments/wrappers/{assetType}/{wrapperKey}": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Edits one wrapper at a time. `wrapperKey` is the wrapper lower-cased and URL-encoded (any casing and extra whitespace is accepted; `_unassigned` is rejected). The percentages set in an asset type may add up to at most 100.00; the rest stays unallocated (422 ALLOCATION_EXCEEDS_100, with `details.assigned` by the other wrappers and `details.available`). `targetPct: null` clears the percentage. The wrapper must hold a live investment or already have a percentage (404 WRAPPER_NOT_FOUND). Any member of the space may edit; every write records who did it. The response carries the asset type's new assigned and unallocated percentage.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "investments"
+                ],
+                "summary": "Set or clear the percentage of one wrapper",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Space ID",
+                        "name": "spaceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "CRYPTO, ID_STOCK, US_STOCK, MUTUAL_FUND or GLOBAL_ETF",
+                        "name": "assetType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Wrapper, lower-cased and URL-encoded",
+                        "name": "wrapperKey",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Percentage",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/investments.SetTargetRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/investments.SetTargetResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "space or WRAPPER_NOT_FOUND",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "422": {
+                        "description": "ALLOCATION_EXCEEDS_100",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/spaces/{spaceId}/investments/{id}": {
             "get": {
                 "security": [
@@ -2940,7 +3174,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/investments.ParticipantsResponse"
+                            "$ref": "#/definitions/investments.SetParticipantsResponse"
                         }
                     },
                     "400": {
@@ -2975,6 +3209,10 @@
                         "BearerAuth": []
                     }
                 ],
+                "description": "Answers 204. With `?return=investment` it answers 200 with the investment as it is now, so the client can update in place.",
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "sharing"
                 ],
@@ -2993,9 +3231,21 @@
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "investment: answer 200 with the investment instead of 204",
+                        "name": "return",
+                        "in": "query"
                     }
                 ],
                 "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/investments.InvestmentDTO"
+                        }
+                    },
                     "204": {
                         "description": "No Content"
                     },
@@ -4464,7 +4714,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Favorites first, then sortOrder. `total` is converted to the space base currency; wallets without a usable FX rate are left out and reported in `total.warnings`.",
+                "description": "Favorites first, then sortOrder. `total` is converted to the space base currency; wallets without a usable FX rate are left out and reported in `total.warnings`. Each item also carries `baseBalance` and `pctOfTotal` (percent of the total, 2 decimals, adding up to exactly 100.00; null without an FX rate) for pie charts.",
                 "produces": [
                     "application/json"
                 ],
@@ -4833,6 +5083,71 @@
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/spaces/{spaceId}/wallets/{id}/display-prefs": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Per user and synced across devices; other members of the space never see them. Fields that are not sent keep their value; a result with nothing hidden is the default and is not stored. Also returned as `displayPrefs` by GET /wallets and GET /wallets/{id}.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "wallets"
+                ],
+                "summary": "Set my display preferences of a wallet (hide logo, name, type)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Space ID",
+                        "name": "spaceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Wallet ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Preferences to change",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/wallets.PrefsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/wallets.DisplayPrefs"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "space or WALLET_NOT_FOUND",
                         "schema": {
                             "$ref": "#/definitions/httpx.ErrorEnvelope"
                         }
@@ -5516,7 +5831,7 @@
                 "pct": {
                     "description": "a percentage of the total",
                     "type": "string",
-                    "example": "42.5"
+                    "example": "42.50"
                 }
             }
         },
@@ -5847,6 +6162,38 @@
                 }
             }
         },
+        "investments.AcceptResponse": {
+            "type": "object",
+            "properties": {
+                "investmentId": {
+                    "type": "string"
+                },
+                "spaceId": {
+                    "type": "string"
+                }
+            }
+        },
+        "investments.AllocationsResponse": {
+            "type": "object",
+            "properties": {
+                "categories": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/investments.CategoryAllocationDTO"
+                    }
+                },
+                "currency": {
+                    "type": "string",
+                    "example": "IDR"
+                },
+                "warnings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/currency.Warning"
+                    }
+                }
+            }
+        },
         "investments.BaseValues": {
             "type": "object",
             "properties": {
@@ -5867,6 +6214,106 @@
                 },
                 "unrealizedPl": {
                     "type": "string"
+                }
+            }
+        },
+        "investments.CategoryAllocationDTO": {
+            "type": "object",
+            "properties": {
+                "assetType": {
+                    "type": "string",
+                    "enum": [
+                        "CRYPTO",
+                        "ID_STOCK",
+                        "US_STOCK",
+                        "MUTUAL_FUND",
+                        "GLOBAL_ETF"
+                    ]
+                },
+                "assignedPct": {
+                    "type": "string",
+                    "example": "70.00"
+                },
+                "label": {
+                    "type": "string",
+                    "example": "Crypto"
+                },
+                "unallocatedPct": {
+                    "type": "string",
+                    "example": "30.00"
+                },
+                "wrappers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/investments.WrapperAllocationDTO"
+                    }
+                }
+            }
+        },
+        "investments.CategoryGroupDTO": {
+            "type": "object",
+            "properties": {
+                "assetType": {
+                    "type": "string",
+                    "enum": [
+                        "CRYPTO",
+                        "ID_STOCK",
+                        "US_STOCK",
+                        "MUTUAL_FUND",
+                        "GLOBAL_ETF"
+                    ]
+                },
+                "assignedPct": {
+                    "description": "AssignedPct is the sum of the wrapper percentages set in this asset type; UnallocatedPct = 100 - assigned.",
+                    "type": "string",
+                    "example": "70.00"
+                },
+                "cost": {
+                    "type": "string",
+                    "example": "700000"
+                },
+                "label": {
+                    "type": "string",
+                    "example": "Crypto"
+                },
+                "pctOfTotal": {
+                    "type": "string",
+                    "example": "60.00"
+                },
+                "unallocatedPct": {
+                    "type": "string",
+                    "example": "30.00"
+                },
+                "unrealizedPl": {
+                    "type": "string",
+                    "example": "200000"
+                },
+                "unrealizedPlPct": {
+                    "type": "string",
+                    "example": "28.57"
+                },
+                "value": {
+                    "type": "string",
+                    "example": "900000"
+                },
+                "wrappers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/investments.WrapperGroupDTO"
+                    }
+                }
+            }
+        },
+        "investments.CategoryTotalsDTO": {
+            "type": "object",
+            "properties": {
+                "assignedPct": {
+                    "type": "string",
+                    "example": "70.00"
+                },
+                "unallocatedPct": {
+                    "type": "string",
+                    "example": "30.00"
                 }
             }
         },
@@ -5939,6 +6386,11 @@
                 },
                 "symbol": {
                     "type": "string"
+                },
+                "wrapper": {
+                    "description": "Wrapper is the exchange, broker or platform holding the position (1 to 60 characters). When omitted it is derived from details (exchangeOrWallet, broker or platform).",
+                    "type": "string",
+                    "example": "Binance"
                 }
             }
         },
@@ -5983,6 +6435,30 @@
                 },
                 "walletId": {
                     "type": "string"
+                }
+            }
+        },
+        "investments.GroupedResponse": {
+            "type": "object",
+            "properties": {
+                "categories": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/investments.CategoryGroupDTO"
+                    }
+                },
+                "currency": {
+                    "type": "string",
+                    "example": "IDR"
+                },
+                "total": {
+                    "$ref": "#/definitions/investments.TotalsDTO"
+                },
+                "warnings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/currency.Warning"
+                    }
                 }
             }
         },
@@ -6056,6 +6532,14 @@
                         "$ref": "#/definitions/investments.ParticipantDTO"
                     }
                 },
+                "pctOfTotal": {
+                    "description": "PctOfTotal is this investment's share of the portfolio's base-currency value (only in the list response; null without a base value).",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/money.Pct"
+                        }
+                    ]
+                },
                 "priceMode": {
                     "type": "string",
                     "enum": [
@@ -6099,6 +6583,11 @@
                             "$ref": "#/definitions/investments.Valuation"
                         }
                     ]
+                },
+                "wrapper": {
+                    "description": "Wrapper is the exchange, broker or platform the position is held on; null when unknown.",
+                    "type": "string",
+                    "example": "Binance"
                 }
             }
         },
@@ -6268,6 +6757,10 @@
                 },
                 "symbol": {
                     "type": "string"
+                },
+                "wrapper": {
+                    "description": "Wrapper sets the exchange, broker or platform holding the position; null re-derives it from details.",
+                    "type": "string"
                 }
             }
         },
@@ -6275,8 +6768,9 @@
             "type": "object",
             "properties": {
                 "amount": {
+                    "description": "Amount is in the investment's quote currency, Base in the space's base currency (null without an FX rate).",
                     "type": "string",
-                    "example": "5990"
+                    "example": "5990.00"
                 },
                 "base": {
                     "type": "string"
@@ -6303,6 +6797,76 @@
                     "items": {
                         "$ref": "#/definitions/investments.participantRequest"
                     }
+                }
+            }
+        },
+        "investments.SetParticipantsResponse": {
+            "type": "object",
+            "properties": {
+                "investment": {
+                    "$ref": "#/definitions/investments.InvestmentDTO"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/investments.ParticipantDTO"
+                    }
+                }
+            }
+        },
+        "investments.SetTargetRequest": {
+            "type": "object",
+            "properties": {
+                "targetPct": {
+                    "description": "TargetPct is a percentage from 0 to 100 with at most 2 decimals (\"40.00\"); null clears it.",
+                    "type": "string",
+                    "example": "40.00"
+                }
+            }
+        },
+        "investments.SetTargetResponse": {
+            "type": "object",
+            "properties": {
+                "actualPct": {
+                    "description": "ActualPct is the wrapper's share of its asset type's value; null when the asset type is worth 0.",
+                    "type": "string",
+                    "example": "33.33"
+                },
+                "assetType": {
+                    "type": "string",
+                    "enum": [
+                        "CRYPTO",
+                        "ID_STOCK",
+                        "US_STOCK",
+                        "MUTUAL_FUND",
+                        "GLOBAL_ETF"
+                    ]
+                },
+                "category": {
+                    "$ref": "#/definitions/investments.CategoryTotalsDTO"
+                },
+                "driftPct": {
+                    "description": "DriftPct is actualPct - targetPct; null unless both are known.",
+                    "type": "string",
+                    "example": "-6.67"
+                },
+                "key": {
+                    "type": "string",
+                    "example": "binance"
+                },
+                "label": {
+                    "type": "string",
+                    "example": "Binance"
+                },
+                "targetPct": {
+                    "description": "TargetPct is the percentage set for this wrapper; null when none is set (not 0).",
+                    "type": "string",
+                    "example": "40.00"
+                },
+                "wrapper": {
+                    "description": "Wrapper is the display name; null for the unassigned group.",
+                    "type": "string",
+                    "example": "Binance"
                 }
             }
         },
@@ -6351,6 +6915,27 @@
                     "items": {
                         "$ref": "#/definitions/currency.Warning"
                     }
+                }
+            }
+        },
+        "investments.TotalsDTO": {
+            "type": "object",
+            "properties": {
+                "cost": {
+                    "type": "string",
+                    "example": "700000"
+                },
+                "unrealizedPl": {
+                    "type": "string",
+                    "example": "200000"
+                },
+                "unrealizedPlPct": {
+                    "type": "string",
+                    "example": "28.57"
+                },
+                "value": {
+                    "type": "string",
+                    "example": "900000"
                 }
             }
         },
@@ -6465,6 +7050,111 @@
                 }
             }
         },
+        "investments.WrapperAllocationDTO": {
+            "type": "object",
+            "properties": {
+                "actualPct": {
+                    "description": "ActualPct is the wrapper's share of its asset type's value; null when the asset type is worth 0.",
+                    "type": "string",
+                    "example": "33.33"
+                },
+                "assetType": {
+                    "type": "string",
+                    "enum": [
+                        "CRYPTO",
+                        "ID_STOCK",
+                        "US_STOCK",
+                        "MUTUAL_FUND",
+                        "GLOBAL_ETF"
+                    ]
+                },
+                "driftPct": {
+                    "description": "DriftPct is actualPct - targetPct; null unless both are known.",
+                    "type": "string",
+                    "example": "-6.67"
+                },
+                "key": {
+                    "type": "string",
+                    "example": "binance"
+                },
+                "label": {
+                    "type": "string",
+                    "example": "Binance"
+                },
+                "targetPct": {
+                    "description": "TargetPct is the percentage set for this wrapper; null when none is set (not 0).",
+                    "type": "string",
+                    "example": "40.00"
+                },
+                "wrapper": {
+                    "description": "Wrapper is the display name; null for the unassigned group.",
+                    "type": "string",
+                    "example": "Binance"
+                }
+            }
+        },
+        "investments.WrapperGroupDTO": {
+            "type": "object",
+            "properties": {
+                "cost": {
+                    "type": "string",
+                    "example": "700000"
+                },
+                "count": {
+                    "type": "integer"
+                },
+                "driftPct": {
+                    "type": "string",
+                    "example": "6.67"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/investments.InvestmentDTO"
+                    }
+                },
+                "key": {
+                    "description": "Key is the lower-cased, whitespace-normalised wrapper (\"_unassigned\" for none).",
+                    "type": "string",
+                    "example": "binance"
+                },
+                "label": {
+                    "description": "Label is the wrapper, or \"Unassigned\".",
+                    "type": "string",
+                    "example": "Binance"
+                },
+                "pctOfCategory": {
+                    "type": "string",
+                    "example": "66.67"
+                },
+                "pctOfTotal": {
+                    "type": "string",
+                    "example": "40.00"
+                },
+                "targetPct": {
+                    "description": "TargetPct is the percentage set for this wrapper (null when none); DriftPct = pctOfCategory - targetPct.",
+                    "type": "string",
+                    "example": "60.00"
+                },
+                "unrealizedPl": {
+                    "type": "string",
+                    "example": "200000"
+                },
+                "unrealizedPlPct": {
+                    "type": "string",
+                    "example": "28.57"
+                },
+                "value": {
+                    "type": "string",
+                    "example": "900000"
+                },
+                "wrapper": {
+                    "description": "Wrapper is the display name; null for investments without a wrapper.",
+                    "type": "string",
+                    "example": "Binance"
+                }
+            }
+        },
         "investments.acceptRequest": {
             "type": "object",
             "required": [
@@ -6519,9 +7209,9 @@
                     "example": "IDR"
                 },
                 "currentValue": {
-                    "description": "a liability's outstanding amount",
+                    "description": "in the asset's currency (IDR and JPY: no decimals, others 2); a liability's outstanding amount",
                     "type": "string",
-                    "example": "500"
+                    "example": "500.00"
                 },
                 "dueDate": {
                     "type": "string",
@@ -6741,6 +7431,144 @@
                 }
             }
         },
+        "money.Pct": {
+            "type": "object",
+            "properties": {
+                "decimal.Decimal": {
+                    "type": "number"
+                }
+            }
+        },
+        "networth.AssetLineDTO": {
+            "type": "object",
+            "properties": {
+                "baseValue": {
+                    "type": "string"
+                },
+                "currency": {
+                    "type": "string",
+                    "example": "IDR"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "pctOfTotal": {
+                    "type": "string"
+                },
+                "value": {
+                    "description": "Value is in the asset's currency, BaseValue in the space's base currency (null without an FX rate).",
+                    "type": "string"
+                }
+            }
+        },
+        "networth.AssetSectionDTO": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/networth.AssetLineDTO"
+                    }
+                },
+                "total": {
+                    "type": "string"
+                }
+            }
+        },
+        "networth.AssetSummaryDTO": {
+            "type": "object",
+            "properties": {
+                "asOf": {
+                    "type": "string"
+                },
+                "cash": {
+                    "$ref": "#/definitions/networth.CashSectionDTO"
+                },
+                "currency": {
+                    "type": "string",
+                    "example": "IDR"
+                },
+                "fixedAssets": {
+                    "$ref": "#/definitions/networth.AssetSectionDTO"
+                },
+                "investments": {
+                    "$ref": "#/definitions/networth.InvestmentsSectionDTO"
+                },
+                "liabilities": {
+                    "$ref": "#/definitions/networth.AssetSectionDTO"
+                },
+                "netWorth": {
+                    "type": "string"
+                },
+                "receivables": {
+                    "$ref": "#/definitions/networth.AssetSectionDTO"
+                },
+                "trackingMode": {
+                    "type": "string",
+                    "enum": [
+                        "FULL_NET_WORTH",
+                        "CASH_ONLY"
+                    ]
+                },
+                "warnings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/currency.Warning"
+                    }
+                }
+            }
+        },
+        "networth.CashSectionDTO": {
+            "type": "object",
+            "properties": {
+                "pctOfNetWorth": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "string"
+                },
+                "wallets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/networth.WalletLineDTO"
+                    }
+                }
+            }
+        },
+        "networth.CategoryLineDTO": {
+            "type": "object",
+            "properties": {
+                "assetType": {
+                    "type": "string",
+                    "enum": [
+                        "CRYPTO",
+                        "ID_STOCK",
+                        "US_STOCK",
+                        "MUTUAL_FUND",
+                        "GLOBAL_ETF"
+                    ]
+                },
+                "label": {
+                    "type": "string",
+                    "example": "Crypto"
+                },
+                "pctOfTotal": {
+                    "type": "string"
+                },
+                "unrealizedPl": {
+                    "type": "string"
+                },
+                "unrealizedPlPct": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
         "networth.HistoryDTO": {
             "type": "object",
             "properties": {
@@ -6751,6 +7579,10 @@
                 "currency": {
                     "type": "string",
                     "example": "USD"
+                },
+                "investmentsChangePct": {
+                    "description": "InvestmentsChangePct is the same change for the portfolio value.",
+                    "type": "string"
                 },
                 "points": {
                     "type": "array",
@@ -6788,12 +7620,39 @@
                 }
             }
         },
+        "networth.InvestmentsSectionDTO": {
+            "type": "object",
+            "properties": {
+                "categories": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/networth.CategoryLineDTO"
+                    }
+                },
+                "cost": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "string"
+                },
+                "unrealizedPl": {
+                    "type": "string"
+                },
+                "unrealizedPlPct": {
+                    "type": "string"
+                }
+            }
+        },
         "networth.PointDTO": {
             "type": "object",
             "properties": {
                 "date": {
                     "type": "string",
                     "example": "2026-11-18"
+                },
+                "investments": {
+                    "description": "Investments is the portfolio value of the day (the investments line of the net worth).",
+                    "type": "string"
                 },
                 "live": {
                     "description": "the point computed now for today",
@@ -6844,6 +7703,41 @@
                     "items": {
                         "$ref": "#/definitions/currency.Warning"
                     }
+                }
+            }
+        },
+        "networth.WalletLineDTO": {
+            "type": "object",
+            "properties": {
+                "balance": {
+                    "description": "Balance is in the wallet's currency, BaseBalance in the space's base currency (null without an FX rate).",
+                    "type": "string"
+                },
+                "baseBalance": {
+                    "type": "string"
+                },
+                "currency": {
+                    "type": "string",
+                    "example": "USD"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "pctOfTotal": {
+                    "description": "PctOfTotal is the wallet's share of the cash total; the shares add up to exactly 100.00.",
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "BANK",
+                        "E_WALLET",
+                        "CASH",
+                        "OTHER"
+                    ]
                 }
             }
         },
@@ -7496,6 +8390,20 @@
                 }
             }
         },
+        "wallets.DisplayPrefs": {
+            "type": "object",
+            "properties": {
+                "hideLogo": {
+                    "type": "boolean"
+                },
+                "hideName": {
+                    "type": "boolean"
+                },
+                "hideType": {
+                    "type": "boolean"
+                }
+            }
+        },
         "wallets.ListResponse": {
             "type": "object",
             "properties": {
@@ -7507,6 +8415,20 @@
                 },
                 "total": {
                     "$ref": "#/definitions/currency.AggregateResult"
+                }
+            }
+        },
+        "wallets.PrefsRequest": {
+            "type": "object",
+            "properties": {
+                "hideLogo": {
+                    "type": "boolean"
+                },
+                "hideName": {
+                    "type": "boolean"
+                },
+                "hideType": {
+                    "type": "boolean"
                 }
             }
         },
@@ -7549,8 +8471,14 @@
                     "example": "34.26"
                 },
                 "balance": {
+                    "description": "Balance, Reserved and Available are in the wallet's currency: IDR and JPY show no decimals, others 2.",
                     "type": "string",
                     "example": "134.26"
+                },
+                "baseBalance": {
+                    "description": "BaseBalance and PctOfTotal are set in the list response only: the balance in the space's\nbase currency, and its share of the total (percentages add up to exactly 100.00). Null\nwithout an FX rate, or when the total is 0.",
+                    "type": "string",
+                    "example": "2150000"
                 },
                 "cardStyle": {
                     "$ref": "#/definitions/wallets.CardStyle"
@@ -7561,6 +8489,14 @@
                 "currency": {
                     "type": "string",
                     "example": "IDR"
+                },
+                "displayPrefs": {
+                    "description": "DisplayPrefs are the calling user's own display choices for this wallet (all false by default);\nother members never see them.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/wallets.DisplayPrefs"
+                        }
+                    ]
                 },
                 "icon": {
                     "type": "string"
@@ -7577,10 +8513,14 @@
                 "overReserved": {
                     "type": "boolean"
                 },
+                "pctOfTotal": {
+                    "type": "string",
+                    "example": "33.33"
+                },
                 "reserved": {
                     "description": "Reserved is the part of the balance earmarked for goals; Available = balance − reserved\nand may be negative when expenses pushed the wallet below its reserves (OverReserved).",
                     "type": "string",
-                    "example": "100"
+                    "example": "100.00"
                 },
                 "sortOrder": {
                     "type": "integer"

@@ -213,7 +213,7 @@ func sharedInRow(r sqlc.ListSharedInInvestmentsRow) sqlc.Investment {
 		ManualPrice: r.ManualPrice, Fees: r.Fees, ManualCurrentValue: r.ManualCurrentValue, PurchaseDate: r.PurchaseDate,
 		EstimatedAnnualChangePct: r.EstimatedAnnualChangePct, ManualFxRate: r.ManualFxRate, Details: r.Details,
 		InstrumentID: r.InstrumentID, IsShared: r.IsShared, CreatedByID: r.CreatedByID, CreatedAt: r.CreatedAt,
-		UpdatedAt: r.UpdatedAt, DeletedAt: r.DeletedAt,
+		UpdatedAt: r.UpdatedAt, DeletedAt: r.DeletedAt, Wrapper: r.Wrapper,
 	}
 }
 
@@ -254,6 +254,7 @@ func (s *Service) valueForViewer(inv sqlc.Investment, prices map[uuid.UUID]Marke
 	}
 	it.Ownership = ownership
 	it.Realized = AllocateRealized(realized, share, cc.BaseCurrency)
+	it.Realized.BaseCurrency = strings.TrimSpace(cc.BaseCurrency)
 	return it, nil
 }
 
@@ -335,7 +336,7 @@ func (s *Service) Create(ctx context.Context, spaceID, userID uuid.UUID, spec Sp
 			ManualPrice: spec.ManualPrice, Fees: spec.Fees, ManualCurrentValue: toNullDecimal(spec.ManualCurrentValue),
 			PurchaseDate: spec.PurchaseDate, EstimatedAnnualChangePct: spec.EstimatedAnnualChangePct,
 			ManualFxRate: toNullDecimal(spec.ManualFxRate), Details: details, CreatedByID: userID,
-			InstrumentID: instrument,
+			InstrumentID: instrument, Wrapper: spec.Wrapper,
 		})
 	}
 
@@ -401,7 +402,9 @@ func (s *Service) fundInitialPosition(ctx context.Context, tx pgx.Tx, q *sqlc.Qu
 type RealizedPL struct {
 	Amount decimal.Decimal  // in the investment's quote currency
 	Base   *decimal.Decimal // converted to the space base currency; nil without an FX rate
-	Sells  int
+	// BaseCurrency is the currency of Base.
+	BaseCurrency string
+	Sells        int
 }
 
 // realized totals each investment's realized profit/loss, scaled to the viewer's
@@ -526,7 +529,7 @@ func (s *Service) Update(ctx context.Context, space sqlc.Space, userID, id uuid.
 			QuoteCurrency: spec.QuoteCurrency, Quantity: spec.Quantity, AvgBuyPrice: spec.AvgBuyPrice,
 			ManualPrice: spec.ManualPrice, Fees: spec.Fees, ManualCurrentValue: toNullDecimal(spec.ManualCurrentValue),
 			PurchaseDate: spec.PurchaseDate, EstimatedAnnualChangePct: spec.EstimatedAnnualChangePct,
-			ManualFxRate: toNullDecimal(spec.ManualFxRate), Details: details,
+			ManualFxRate: toNullDecimal(spec.ManualFxRate), Details: details, Wrapper: spec.Wrapper,
 		})
 		if err != nil {
 			return err

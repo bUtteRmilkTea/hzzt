@@ -55,11 +55,11 @@ func (h *Handler) Mount(r chi.Router) {
 
 // ValueChangeDTO is one entry of an asset's value history.
 type ValueChangeDTO struct {
-	PreviousValue decimal.Decimal `json:"previousValue" swaggertype:"string"`
-	NewValue      decimal.Decimal `json:"newValue" swaggertype:"string"`
-	Reason        string          `json:"reason" enums:"MANUAL,SETTLEMENT"`
-	TransactionID *uuid.UUID      `json:"transactionId"`
-	ChangedAt     time.Time       `json:"changedAt"`
+	PreviousValue money.Amount `json:"previousValue" swaggertype:"string"`
+	NewValue      money.Amount `json:"newValue" swaggertype:"string"`
+	Reason        string       `json:"reason" enums:"MANUAL,SETTLEMENT"`
+	TransactionID *uuid.UUID   `json:"transactionId"`
+	ChangedAt     time.Time    `json:"changedAt"`
 }
 
 // AssetDTO is the public representation of a manual asset.
@@ -69,7 +69,7 @@ type AssetDTO struct {
 	Name                     string           `json:"name"`
 	Icon                     string           `json:"icon"`
 	Currency                 string           `json:"currency" example:"IDR"`
-	CurrentValue             decimal.Decimal  `json:"currentValue" swaggertype:"string" example:"500"` // a liability's outstanding amount
+	CurrentValue             money.Amount     `json:"currentValue" swaggertype:"string" example:"500.00"` // in the asset's currency (IDR and JPY: no decimals, others 2); a liability's outstanding amount
 	CounterpartyName         *string          `json:"counterpartyName"`
 	DueDate                  *string          `json:"dueDate" example:"2026-12-31"`
 	EstimatedAnnualChangePct *decimal.Decimal `json:"estimatedAnnualChangePct" swaggertype:"string"`
@@ -81,7 +81,7 @@ type AssetDTO struct {
 
 func toDTO(a Asset) AssetDTO {
 	d := AssetDTO{
-		ID: a.ID, Kind: a.Kind, Name: a.Name, Icon: a.Icon, Currency: strings.TrimSpace(a.Currency), CurrentValue: a.CurrentValue,
+		ID: a.ID, Kind: a.Kind, Name: a.Name, Icon: a.Icon, Currency: strings.TrimSpace(a.Currency), CurrentValue: money.NewAmount(a.CurrentValue, a.Currency),
 		CounterpartyName: a.CounterpartyName, Note: a.Note, CreatedAt: a.CreatedAt.UTC(), UpdatedAt: a.UpdatedAt.UTC(),
 	}
 	if a.DueDate != nil {
@@ -93,7 +93,7 @@ func toDTO(a Asset) AssetDTO {
 		d.EstimatedAnnualChangePct = &v
 	}
 	for _, h := range a.History {
-		c := ValueChangeDTO{PreviousValue: h.PreviousValue, NewValue: h.NewValue, Reason: h.Reason, ChangedAt: h.ChangedAt.UTC()}
+		c := ValueChangeDTO{PreviousValue: money.NewAmount(h.PreviousValue, a.Currency), NewValue: money.NewAmount(h.NewValue, a.Currency), Reason: h.Reason, ChangedAt: h.ChangedAt.UTC()}
 		if h.TransactionID.Valid {
 			id := h.TransactionID.UUID
 			c.TransactionID = &id

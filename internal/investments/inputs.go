@@ -33,6 +33,8 @@ type Spec struct {
 	ManualFxRate             *decimal.Decimal
 	PurchaseDate             *time.Time
 	EstimatedAnnualChangePct decimal.Decimal
+	// Wrapper is the exchange, broker or platform the position is held on (grouping key); nil when unknown.
+	Wrapper *string
 	// Details is one of the *Details structs below.
 	Details any
 	// InstrumentID is the market instrument the client picked from search
@@ -164,10 +166,12 @@ func parseStoredDetails(assetType string, raw []byte) (any, error) {
 // input and carries no validate tags (they would surface as "base.<field>");
 // buildSpec validates these fields by hand.
 type base struct {
-	PriceMode                *string          `json:"priceMode"`
-	Symbol                   *string          `json:"symbol"`
-	Icon                     *string          `json:"icon"`
-	QuoteCurrency            *string          `json:"quoteCurrency"`
+	PriceMode     *string `json:"priceMode"`
+	Symbol        *string `json:"symbol"`
+	Icon          *string `json:"icon"`
+	QuoteCurrency *string `json:"quoteCurrency"`
+	// Wrapper is the exchange, broker or platform holding the position (1 to 60 characters). When omitted it is derived from details (exchangeOrWallet, broker or platform).
+	Wrapper                  *string          `json:"wrapper" example:"Binance"`
 	AvgBuyPrice              *decimal.Decimal `json:"avgBuyPrice" swaggertype:"string" example:"9200"`
 	ManualPrice              *decimal.Decimal `json:"manualPrice" swaggertype:"string" example:"9500"`
 	Fees                     *decimal.Decimal `json:"fees" swaggertype:"string"`
@@ -333,6 +337,52 @@ func cleanIcon(f map[string]any, icon *string, def string) string {
 	return i
 }
 
+// NormalizeWrapper trims a wrapper name and collapses inner whitespace runs to one space.
+func NormalizeWrapper(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// WrapperKey is the grouping key of a wrapper: case and whitespace insensitive.
+func WrapperKey(s string) string { return strings.ToLower(NormalizeWrapper(s)) }
+
+// cleanWrapper validates an explicit wrapper; blank counts as not given.
+func cleanWrapper(f map[string]any, w *string) *string {
+	if w == nil {
+		return nil
+	}
+	v := NormalizeWrapper(*w)
+	if v == "" {
+		return nil
+	}
+	if utf8.RuneCountInString(v) > 60 {
+		f["wrapper"] = "must be at most 60 characters"
+	}
+	return &v
+}
+
+// DetailsWrapper derives the wrapper from the type-specific details: exchangeOrWallet
+// (CRYPTO), broker (ID_STOCK) or platform (US_STOCK, GLOBAL_ETF; their `exchange` is the
+// listing venue, not where the position is held). MUTUAL_FUND has none.
+func DetailsWrapper(details any) *string {
+	var raw *string
+	switch d := details.(type) {
+	case cryptoDetails:
+		raw = d.ExchangeOrWallet
+	case idStockDetails:
+		raw = d.Broker
+	case usStockDetails:
+		raw = d.Platform
+	case globalETFDetails:
+		raw = d.Platform
+	}
+	if raw == nil {
+		return nil
+	}
+	v := NormalizeWrapper(*raw)
+	if v == "" {
+		return nil
+	}
+	return &v
+}
+
 func quoteCurrency(f map[string]any, meta TypeMeta, given *string, baseCurrency string) string {
 	if meta.QuoteCurrency != nil { // fixed by the asset type
 		if given != nil && !strings.EqualFold(strings.TrimSpace(*given), *meta.QuoteCurrency) {
@@ -371,6 +421,7 @@ func buildSpec(assetType, name string, b *base, quantity *decimal.Decimal, detai
 		PurchaseDate:             parseDate(f, "purchaseDate", b.PurchaseDate),
 		EstimatedAnnualChangePct: decimal.RequireFromString(DefaultEstimatedAnnualChangePct),
 		Details:                  details,
+		Wrapper:                  cleanWrapper(f, b.Wrapper),
 	}
 	if b.PriceMode != nil {
 		if *b.PriceMode != PriceModeAuto && *b.PriceMode != PriceModeManual {
@@ -441,6 +492,9 @@ func finalize(s Spec, f map[string]any) (Spec, error) {
 			}
 		}
 	}
+	if s.Wrapper == nil {
+		s.Wrapper = DetailsWrapper(s.Details)
+	}
 	meta, _ := MetaFor(s.AssetType)
 	if meta.SymbolRequired && s.Symbol == nil {
 		f["symbol"] = "is required for " + s.AssetType
@@ -509,6 +563,8 @@ type PatchInput struct {
 	PurchaseDate             nullStr          `json:"purchaseDate" swaggertype:"string"`
 	EstimatedAnnualChangePct *decimal.Decimal `json:"estimatedAnnualChangePct" swaggertype:"string"`
 	ManualFxRate             nullDec          `json:"manualFxRate" swaggertype:"string"`
+	// Wrapper sets the exchange, broker or platform holding the position; null re-derives it from details.
+	Wrapper nullStr `json:"wrapper" swaggertype:"string"`
 	// InstrumentID relinks an auto-priced investment to an instrument picked from search.
 	InstrumentID *uuid.UUID      `json:"instrumentId" swaggertype:"string"`
 	Details      json.RawMessage `json:"details" swaggertype:"object"`
@@ -524,7 +580,7 @@ func specFromRow(inv sqlc.Investment) (Spec, error) {
 		AssetType: inv.AssetType, PriceMode: inv.PriceMode, Name: inv.Name, Symbol: inv.Symbol, Icon: inv.Icon,
 		QuoteCurrency: strings.TrimSpace(inv.QuoteCurrency), Quantity: inv.Quantity, AvgBuyPrice: inv.AvgBuyPrice,
 		ManualPrice: inv.ManualPrice, Fees: inv.Fees, PurchaseDate: inv.PurchaseDate,
-		EstimatedAnnualChangePct: inv.EstimatedAnnualChangePct, Details: d,
+		EstimatedAnnualChangePct: inv.EstimatedAnnualChangePct, Details: d, Wrapper: inv.Wrapper,
 	}
 	if inv.ManualCurrentValue.Valid {
 		v := inv.ManualCurrentValue.Decimal
@@ -622,8 +678,14 @@ func (p PatchInput) apply(inv sqlc.Investment, baseCurrency string) (Spec, error
 				return Spec{}, err
 			}
 		} else {
+			if !p.Wrapper.Set && !equalPtr(DetailsWrapper(s.Details), DetailsWrapper(d)) {
+				s.Wrapper = nil // the broker/exchange in details changed: follow it
+			}
 			s.Details = d
 		}
+	}
+	if p.Wrapper.Set {
+		s.Wrapper = cleanWrapper(f, p.Wrapper.Value)
 	}
 	return finalize(s, f)
 }
@@ -635,4 +697,11 @@ func DetailsJSON(d any) (json.RawMessage, error) {
 		return nil, err
 	}
 	return b, nil
+}
+
+func equalPtr(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }

@@ -8,12 +8,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/shopspring/decimal"
 
 	"github.com/JonathanRainee/hzzt/internal/auth"
 	"github.com/JonathanRainee/hzzt/internal/currency"
 	"github.com/JonathanRainee/hzzt/internal/platform/apperror"
 	"github.com/JonathanRainee/hzzt/internal/platform/httpx"
+	"github.com/JonathanRainee/hzzt/internal/platform/money"
 	"github.com/JonathanRainee/hzzt/internal/platform/period"
 	"github.com/JonathanRainee/hzzt/internal/spaces"
 )
@@ -98,21 +98,21 @@ func periodDTO(r period.Range) PeriodDTO { return PeriodDTO{From: r.From, To: r.
 
 // TotalsDTO is income, expense and the transaction count of one period.
 type TotalsDTO struct {
-	Income           decimal.Decimal `json:"income" swaggertype:"string"`
-	Expense          decimal.Decimal `json:"expense" swaggertype:"string"`
-	Net              decimal.Decimal `json:"net" swaggertype:"string"`
-	TransactionCount int             `json:"transactionCount"`
+	Income           money.Amount `json:"income" swaggertype:"string"`
+	Expense          money.Amount `json:"expense" swaggertype:"string"`
+	Net              money.Amount `json:"net" swaggertype:"string"`
+	TransactionCount int          `json:"transactionCount"`
 }
 
-func totalsDTO(t Totals) TotalsDTO {
-	return TotalsDTO{Income: t.Income, Expense: t.Expense, Net: t.Net(), TransactionCount: t.TransactionCount}
+func totalsDTO(t Totals, cur string) TotalsDTO {
+	return TotalsDTO{Income: money.NewAmount(t.Income, cur), Expense: money.NewAmount(t.Expense, cur), Net: money.NewAmount(t.Net(), cur), TransactionCount: t.TransactionCount}
 }
 
 // ChangeDTO holds percentage changes against the previous period (null when the previous value is 0).
 type ChangeDTO struct {
-	IncomePct  *decimal.Decimal `json:"incomePct" swaggertype:"string"`
-	ExpensePct *decimal.Decimal `json:"expensePct" swaggertype:"string"`
-	NetPct     *decimal.Decimal `json:"netPct" swaggertype:"string"`
+	IncomePct  *money.Pct `json:"incomePct" swaggertype:"string"`
+	ExpensePct *money.Pct `json:"expensePct" swaggertype:"string"`
+	NetPct     *money.Pct `json:"netPct" swaggertype:"string"`
 }
 
 // OverviewDTO is the home-screen overview.
@@ -152,11 +152,11 @@ func (h *Handler) overview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := OverviewDTO{
-		Currency: o.Currency, Period: periodDTO(o.Range), TotalsDTO: totalsDTO(o.Current), Warnings: o.Warnings,
-		Change: ChangeDTO{IncomePct: o.IncomePct, ExpensePct: o.ExpensePct, NetPct: o.NetPct},
+		Currency: o.Currency, Period: periodDTO(o.Range), TotalsDTO: totalsDTO(o.Current, o.Currency), Warnings: o.Warnings,
+		Change: ChangeDTO{IncomePct: money.PctPtr(o.IncomePct), ExpensePct: money.PctPtr(o.ExpensePct), NetPct: money.PctPtr(o.NetPct)},
 	}
 	if o.Previous != nil {
-		p := totalsDTO(*o.Previous)
+		p := totalsDTO(*o.Previous, o.Currency)
 		out.Previous = &p
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -164,17 +164,17 @@ func (h *Handler) overview(w http.ResponseWriter, r *http.Request) {
 
 // CategoryShareDTO is one slice of the breakdown.
 type CategoryShareDTO struct {
-	CategoryID *uuid.UUID      `json:"categoryId"`
-	Name       string          `json:"name"`
-	Icon       string          `json:"icon"`
-	Color      string          `json:"color"`
-	Amount     decimal.Decimal `json:"amount" swaggertype:"string"`
-	Pct        decimal.Decimal `json:"pct" swaggertype:"string" example:"42.5"` // a percentage of the total
-	Count      int             `json:"count"`
+	CategoryID *uuid.UUID   `json:"categoryId"`
+	Name       string       `json:"name"`
+	Icon       string       `json:"icon"`
+	Color      string       `json:"color"`
+	Amount     money.Amount `json:"amount" swaggertype:"string"`
+	Pct        money.Pct    `json:"pct" swaggertype:"string" example:"42.50"` // a percentage of the total
+	Count      int          `json:"count"`
 }
 
-func shareDTO(c CategoryShare) CategoryShareDTO {
-	return CategoryShareDTO(c)
+func shareDTO(c CategoryShare, cur string) CategoryShareDTO {
+	return CategoryShareDTO{CategoryID: c.CategoryID, Name: c.Name, Icon: c.Icon, Color: c.Color, Amount: money.NewAmount(c.Amount, cur), Pct: money.NewPct(c.Pct), Count: c.Count}
 }
 
 // BreakdownDTO splits a period's income or expense by category.
@@ -182,7 +182,7 @@ type BreakdownDTO struct {
 	Currency      string             `json:"currency" example:"USD"`
 	Type          string             `json:"type" enums:"EXPENSE,INCOME"`
 	Period        PeriodDTO          `json:"period"`
-	Total         decimal.Decimal    `json:"total" swaggertype:"string"`
+	Total         money.Amount       `json:"total" swaggertype:"string"`
 	Items         []CategoryShareDTO `json:"items"`
 	Uncategorized *CategoryShareDTO  `json:"uncategorized"`
 	Warnings      []currency.Warning `json:"warnings"`
@@ -222,12 +222,12 @@ func (h *Handler) breakdown(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, err)
 		return
 	}
-	out := BreakdownDTO{Currency: b.Currency, Type: b.Type, Period: periodDTO(b.Range), Total: b.Total, Items: make([]CategoryShareDTO, 0, len(b.Items)), Warnings: b.Warnings}
+	out := BreakdownDTO{Currency: b.Currency, Type: b.Type, Period: periodDTO(b.Range), Total: money.NewAmount(b.Total, b.Currency), Items: make([]CategoryShareDTO, 0, len(b.Items)), Warnings: b.Warnings}
 	for _, it := range b.Items {
-		out.Items = append(out.Items, shareDTO(it))
+		out.Items = append(out.Items, shareDTO(it, b.Currency))
 	}
 	if b.Uncategorized != nil {
-		u := shareDTO(*b.Uncategorized)
+		u := shareDTO(*b.Uncategorized, b.Currency)
 		out.Uncategorized = &u
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -235,11 +235,11 @@ func (h *Handler) breakdown(w http.ResponseWriter, r *http.Request) {
 
 // BucketDTO is one bar of the analytics chart.
 type BucketDTO struct {
-	Label    string          `json:"label" example:"29–30 Nov"`
-	FromDate string          `json:"fromDate" example:"2026-11-29"`
-	ToDate   string          `json:"toDate" example:"2026-11-30"`
-	Income   decimal.Decimal `json:"income" swaggertype:"string"`
-	Expense  decimal.Decimal `json:"expense" swaggertype:"string"`
+	Label    string       `json:"label" example:"29–30 Nov"`
+	FromDate string       `json:"fromDate" example:"2026-11-29"`
+	ToDate   string       `json:"toDate" example:"2026-11-30"`
+	Income   money.Amount `json:"income" swaggertype:"string"`
+	Expense  money.Amount `json:"expense" swaggertype:"string"`
 }
 
 // AnalyticsDTO holds the bars of a period.
@@ -279,18 +279,18 @@ func (h *Handler) analytics(w http.ResponseWriter, r *http.Request) {
 	}
 	out := AnalyticsDTO{Currency: a.Currency, Period: periodDTO(a.Range), Buckets: make([]BucketDTO, 0, len(a.Buckets)), Warnings: a.Warnings}
 	for _, b := range a.Buckets {
-		out.Buckets = append(out.Buckets, BucketDTO{Label: b.Label, FromDate: b.FromDate, ToDate: b.ToDate, Income: b.Income, Expense: b.Expense})
+		out.Buckets = append(out.Buckets, BucketDTO{Label: b.Label, FromDate: b.FromDate, ToDate: b.ToDate, Income: money.NewAmount(b.Income, a.Currency), Expense: money.NewAmount(b.Expense, a.Currency)})
 	}
 	writeJSON(w, http.StatusOK, out)
 }
 
 // DayDTO is one local day of the calendar.
 type DayDTO struct {
-	Date    string          `json:"date" example:"2026-11-18"`
-	Income  decimal.Decimal `json:"income" swaggertype:"string"`
-	Expense decimal.Decimal `json:"expense" swaggertype:"string"`
-	Net     decimal.Decimal `json:"net" swaggertype:"string"`
-	Count   int             `json:"count"`
+	Date    string       `json:"date" example:"2026-11-18"`
+	Income  money.Amount `json:"income" swaggertype:"string"`
+	Expense money.Amount `json:"expense" swaggertype:"string"`
+	Net     money.Amount `json:"net" swaggertype:"string"`
+	Count   int          `json:"count"`
 }
 
 // CalendarDTO lists every day of a month.
@@ -329,7 +329,7 @@ func (h *Handler) calendar(w http.ResponseWriter, r *http.Request) {
 	}
 	out := CalendarDTO{Currency: c.Currency, Month: c.Month, Days: make([]DayDTO, 0, len(c.Days)), Warnings: c.Warnings}
 	for _, d := range c.Days {
-		out.Days = append(out.Days, DayDTO{Date: d.Date, Income: d.Income, Expense: d.Expense, Net: d.Net(), Count: d.Count})
+		out.Days = append(out.Days, DayDTO{Date: d.Date, Income: money.NewAmount(d.Income, c.Currency), Expense: money.NewAmount(d.Expense, c.Currency), Net: money.NewAmount(d.Net(), c.Currency), Count: d.Count})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

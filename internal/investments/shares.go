@@ -462,8 +462,9 @@ func (s *Service) invitationFor(ctx context.Context, q *sqlc.Queries, user sqlc.
 
 // AcceptInvitation attaches the shared investment to one of the invitee's spaces.
 // The invitee must be a member of that space.
-func (s *Service) AcceptInvitation(ctx context.Context, user sqlc.User, participantID, spaceID uuid.UUID) error {
-	return db.WithTx(ctx, s.db, func(tx pgx.Tx) error {
+func (s *Service) AcceptInvitation(ctx context.Context, user sqlc.User, participantID, spaceID uuid.UUID) (uuid.UUID, error) {
+	var invID uuid.UUID
+	err := db.WithTx(ctx, s.db, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		p, err := s.invitationFor(ctx, q, user, participantID)
 		if err != nil {
@@ -491,8 +492,10 @@ func (s *Service) AcceptInvitation(ctx context.Context, user sqlc.User, particip
 			}
 			return err
 		}
+		invID = inv.ID
 		return s.auditParticipant(ctx, q, user, p)
 	})
+	return invID, err
 }
 
 // DeclineInvitation declines an invitation. The share stays allocated until the owner changes it.

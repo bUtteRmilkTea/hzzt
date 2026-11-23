@@ -1,6 +1,7 @@
 package investments
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -48,15 +49,15 @@ func TestCreateIDStockDerivesQuantityFromLots(t *testing.T) {
 	assert.Equal(t, PriceModeManual, s.PriceMode)
 	assert.Nil(t, s.EstimatedAnnualChangePct, "no assumed return")
 	assert.Equal(t, "🇮🇩", s.Icon)
-	assert.Equal(t, idStockDetails{Broker: strp("Stockbit"), Lots: i64p(2)}, s.Details)
+	assert.Equal(t, idStockDetails{Broker: strp("Stockbit"), Lots: jnp("2")}, s.Details)
 
 	s, err = decodeCreate(t, `{"assetType":"ID_STOCK","name":"X","symbol":"X","details":{"lots":0}}`)
 	require.NoError(t, err)
 	assert.True(t, s.Quantity.IsZero(), "0 lots is allowed")
 }
 
-func strp(s string) *string { return &s }
-func i64p(i int64) *int64   { return &i }
+func strp(s string) *string     { return &s }
+func jnp(s string) *json.Number { n := json.Number(s); return &n }
 
 func TestCreateValidationPerType(t *testing.T) {
 	cases := []struct {
@@ -77,7 +78,10 @@ func TestCreateValidationPerType(t *testing.T) {
 		{"id stock: missing lots", `{"assetType":"ID_STOCK","name":"BBCA","symbol":"BBCA","details":{}}`, "details.lots"},
 		{"id stock: no details", `{"assetType":"ID_STOCK","name":"BBCA","symbol":"BBCA"}`, "details.lots"},
 		{"id stock: negative lots", `{"assetType":"ID_STOCK","name":"BBCA","symbol":"BBCA","details":{"lots":-1}}`, "details.lots"},
-		{"id stock: fractional lots", `{"assetType":"ID_STOCK","name":"BBCA","symbol":"BBCA","details":{"lots":1.5}}`, "details"},
+		{"id stock: lots with 2 decimals", `{"assetType":"ID_STOCK","name":"BBCA","symbol":"BBCA","details":{"lots":1.55}}`, "details.lots"},
+		{"crypto: 9 decimals", `{"assetType":"CRYPTO","name":"Bitcoin","symbol":"BTC","quantity":"0.123456789"}`, "quantity"},
+		{"us stock: 2 decimals", `{"assetType":"US_STOCK","name":"Apple","symbol":"AAPL","quantity":"1.25","details":{"exchange":"NASDAQ"}}`, "quantity"},
+		{"crypto: staked with 9 decimals", `{"assetType":"CRYPTO","name":"Ethereum","symbol":"ETH","quantity":"2","details":{"stakedQuantity":"0.123456789"}}`, "details.stakedQuantity"},
 		{"id stock: quantity is derived, not sent", `{"assetType":"ID_STOCK","name":"BBCA","symbol":"BBCA","quantity":"200","details":{"lots":2}}`, "assetType"},
 		{"id stock: wrong quote", `{"assetType":"ID_STOCK","name":"BBCA","symbol":"BBCA","quoteCurrency":"USD","details":{"lots":1}}`, "quoteCurrency"},
 		{"us stock: missing exchange", `{"assetType":"US_STOCK","name":"Apple","symbol":"AAPL","quantity":"1","details":{}}`, "details.exchange"},
@@ -223,7 +227,7 @@ func TestMetasMirrorTheInputs(t *testing.T) {
 func validDetails(assetType string) any {
 	switch assetType {
 	case TypeIDStock:
-		return idStockDetails{Lots: i64p(1)}
+		return idStockDetails{Lots: jnp("1")}
 	case TypeUSStock:
 		return usStockDetails{Exchange: "NYSE"}
 	case TypeMutualFund:
@@ -353,4 +357,34 @@ func TestCryptoWithoutPriceModeDefaultsToAuto(t *testing.T) {
 	spec, err = buildSpec(TypeUSStock, "Apple", &base{Symbol: strp("AAPL")}, dp("1"), validDetails(TypeUSStock), "IDR")
 	require.NoError(t, err)
 	assert.Equal(t, PriceModeManual, spec.PriceMode, "other types stay manual by default")
+}
+
+func TestQuantityDecimalLimits(t *testing.T) {
+	ok := func(body string) Spec {
+		s, err := decodeCreate(t, body)
+		require.NoError(t, err)
+		return s
+	}
+	assert.True(t, d("0.12345678").Equal(ok(`{"assetType":"CRYPTO","name":"Bitcoin","symbol":"BTC","quantity":"0.12345678"}`).Quantity), "crypto keeps 8 decimals")
+	assert.True(t, d("1.5").Equal(ok(`{"assetType":"US_STOCK","name":"Apple","symbol":"AAPL","quantity":"1.5","details":{"exchange":"NASDAQ"}}`).Quantity), "US stock keeps 1 decimal")
+	assert.True(t, d("50").Equal(ok(`{"assetType":"ID_STOCK","name":"BBCA","symbol":"BBCA","details":{"lots":0.5}}`).Quantity), "0.5 lot = 50 shares")
+	assert.True(t, d("250").Equal(ok(`{"assetType":"ID_STOCK","name":"BBCA","symbol":"BBCA","details":{"lots":"2.5"}}`).Quantity), "lots may also arrive as a string")
+	assert.Equal(t, int32(8), QuantityScaleFor(TypeCrypto))
+	assert.Equal(t, int32(1), QuantityScaleFor(TypeUSStock))
+	assert.Equal(t, int32(18), QuantityScaleFor(TypeGlobalETF))
+}
+
+func TestTradeQuantityLimits(t *testing.T) {
+	leg := func(q string) Leg { return Leg{Quantity: d(q), UnitPrice: d("1"), Fee: d("0")} }
+	ok := func(assetType, q string) bool {
+		return checkLeg(sqlc.Investment{AssetType: assetType}, leg(q)) == nil
+	}
+	assert.True(t, ok(TypeCrypto, "0.00000001"))
+	assert.False(t, ok(TypeCrypto, "0.000000001"), "crypto: 9 decimals")
+	assert.True(t, ok(TypeUSStock, "2.5"))
+	assert.False(t, ok(TypeUSStock, "2.55"), "US stock: 2 decimals")
+	assert.True(t, ok(TypeIDStock, "50"), "0.5 lot")
+	assert.True(t, ok(TypeIDStock, "250"), "2.5 lots")
+	assert.False(t, ok(TypeIDStock, "55"), "0.55 lot is two decimals")
+	assert.False(t, ok(TypeIDStock, "50.5"), "shares are whole")
 }

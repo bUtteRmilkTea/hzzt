@@ -7083,6 +7083,11 @@
                         "LOTS"
                     ]
                 },
+                "quantityScale": {
+                    "description": "QuantityScale is the most decimal places a quantity may have (crypto 8, US stock 1, Indonesian stock whole shares with lots to 1 decimal, others 18).",
+                    "type": "integer",
+                    "example": 8
+                },
                 "quoteCurrency": {
                     "description": "null: chosen by the client (default: the space base currency)",
                     "type": "string"

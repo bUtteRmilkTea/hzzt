@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -112,7 +113,7 @@ func lotsDetails(inv sqlc.Investment, qty decimal.Decimal) ([]byte, error) {
 		return nil, err
 	}
 	det := d.(idStockDetails)
-	lots := qty.Div(decimal.NewFromInt(LotSize)).IntPart()
+	lots := json.Number(qty.Div(decimal.NewFromInt(LotSize)).String())
 	det.Lots = &lots
 	return json.Marshal(det)
 }
@@ -137,10 +138,10 @@ func checkLeg(inv sqlc.Investment, l Leg) error {
 	f := map[string]any{}
 	if !l.Quantity.IsPositive() {
 		f["quantity"] = "must be greater than 0"
-	} else if !l.Quantity.Round(quantityScale).Equal(l.Quantity) {
-		f["quantity"] = "must have at most 18 decimal places"
-	} else if inv.AssetType == TypeIDStock && !l.Quantity.Mod(decimal.NewFromInt(LotSize)).IsZero() {
-		f["quantity"] = "must be a whole number of lots (a multiple of 100 shares)"
+	} else if scale := QuantityScaleFor(inv.AssetType); !l.Quantity.Round(scale).Equal(l.Quantity) {
+		f["quantity"] = fmt.Sprintf("must have at most %d decimal places", scale)
+	} else if inv.AssetType == TypeIDStock && !l.Quantity.Div(decimal.NewFromInt(LotSize)).Round(lotsScale).Equal(l.Quantity.Div(decimal.NewFromInt(LotSize))) {
+		f["quantity"] = "must be lots with at most 1 decimal place (a multiple of 10 shares)"
 	}
 	if !l.UnitPrice.IsPositive() {
 		f["unitPrice"] = "must be greater than 0"

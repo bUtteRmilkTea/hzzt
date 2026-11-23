@@ -36,6 +36,9 @@ const (
 // LotSize is the number of shares in one Indonesian stock lot.
 const LotSize = 100
 
+// lotsScale is the most decimal places a lot count may have (0.5 lot = 50 shares).
+const lotsScale = 1
+
 // Error codes owned by this package (see plan Appendix B).
 const (
 	CodeAutoPriceNotSupported = "AUTO_PRICE_NOT_SUPPORTED"
@@ -67,16 +70,18 @@ type FieldMeta struct {
 
 // TypeMeta is the metadata the frontend uses to build the per-type form.
 type TypeMeta struct {
-	AssetType         string       `json:"assetType"`
-	Label             string       `json:"label"`
-	QuoteCurrency     *string      `json:"quoteCurrency"` // null: chosen by the client (default: the space base currency)
-	QuoteCurrencyFree bool         `json:"quoteCurrencyEditable"`
-	SupportsAutoPrice bool         `json:"supportsAutoPrice"`
-	QuantityMode      string       `json:"quantityMode" enums:"QUANTITY,LOTS"`
-	LotSize           *int         `json:"lotSize,omitempty"`
-	SymbolRequired    bool         `json:"symbolRequired"`
-	DefaultIcon       string       `json:"defaultIcon"`
-	Defaults          TypeDefaults `json:"defaults"`
+	AssetType         string  `json:"assetType"`
+	Label             string  `json:"label"`
+	QuoteCurrency     *string `json:"quoteCurrency"` // null: chosen by the client (default: the space base currency)
+	QuoteCurrencyFree bool    `json:"quoteCurrencyEditable"`
+	SupportsAutoPrice bool    `json:"supportsAutoPrice"`
+	QuantityMode      string  `json:"quantityMode" enums:"QUANTITY,LOTS"`
+	// QuantityScale is the most decimal places a quantity may have (crypto 8, US stock 1, Indonesian stock whole shares with lots to 1 decimal, others 18).
+	QuantityScale  int32        `json:"quantityScale" example:"8"`
+	LotSize        *int         `json:"lotSize,omitempty"`
+	SymbolRequired bool         `json:"symbolRequired"`
+	DefaultIcon    string       `json:"defaultIcon"`
+	Defaults       TypeDefaults `json:"defaults"`
 	// DetailFields are the fields of the `details` object.
 	DetailFields []FieldMeta `json:"detailFields"`
 }
@@ -99,7 +104,7 @@ func ip(i int) *int       { return &i }
 var Metas = []TypeMeta{
 	{
 		AssetType: TypeCrypto, Label: "Crypto", QuoteCurrency: sp("USD"), SupportsAutoPrice: true,
-		QuantityMode: QuantityUnits, SymbolRequired: true, DefaultIcon: "🪙",
+		QuantityMode: QuantityUnits, QuantityScale: 8, SymbolRequired: true, DefaultIcon: "🪙",
 		DetailFields: []FieldMeta{
 			{Name: "exchangeOrWallet", Label: "Exchange or wallet", Kind: "TEXT"},
 			{Name: "network", Label: "Network", Kind: "TEXT"},
@@ -108,15 +113,15 @@ var Metas = []TypeMeta{
 	},
 	{
 		AssetType: TypeIDStock, Label: "Indonesian stock", QuoteCurrency: sp("IDR"), SupportsAutoPrice: false,
-		QuantityMode: QuantityLots, LotSize: ip(LotSize), SymbolRequired: true, DefaultIcon: "🇮🇩",
+		QuantityMode: QuantityLots, QuantityScale: 0, LotSize: ip(LotSize), SymbolRequired: true, DefaultIcon: "🇮🇩",
 		DetailFields: []FieldMeta{
 			{Name: "broker", Label: "Broker", Kind: "TEXT"},
-			{Name: "lots", Label: "Lots", Kind: "INTEGER", Required: true},
+			{Name: "lots", Label: "Lots (up to 1 decimal)", Kind: "DECIMAL", Required: true},
 		},
 	},
 	{
 		AssetType: TypeUSStock, Label: "US stock", QuoteCurrency: sp("USD"), SupportsAutoPrice: true,
-		QuantityMode: QuantityUnits, SymbolRequired: true, DefaultIcon: "🇺🇸",
+		QuantityMode: QuantityUnits, QuantityScale: 1, SymbolRequired: true, DefaultIcon: "🇺🇸",
 		DetailFields: []FieldMeta{
 			{Name: "exchange", Label: "Exchange", Kind: "TEXT", Required: true},
 			{Name: "platform", Label: "Platform", Kind: "TEXT"},
@@ -124,7 +129,7 @@ var Metas = []TypeMeta{
 	},
 	{
 		AssetType: TypeMutualFund, Label: "Mutual fund", QuoteCurrency: nil, QuoteCurrencyFree: true, SupportsAutoPrice: false,
-		QuantityMode: QuantityUnits, SymbolRequired: false, DefaultIcon: "💼",
+		QuantityMode: QuantityUnits, QuantityScale: quantityScale, SymbolRequired: false, DefaultIcon: "💼",
 		DetailFields: []FieldMeta{
 			{Name: "fundManager", Label: "Fund manager", Kind: "TEXT"},
 			{Name: "fundType", Label: "Fund type", Kind: "ENUM", Required: true, Options: FundTypes},
@@ -133,7 +138,7 @@ var Metas = []TypeMeta{
 	},
 	{
 		AssetType: TypeGlobalETF, Label: "Global ETF", QuoteCurrency: sp("USD"), SupportsAutoPrice: true,
-		QuantityMode: QuantityUnits, SymbolRequired: true, DefaultIcon: "🌐",
+		QuantityMode: QuantityUnits, QuantityScale: quantityScale, SymbolRequired: true, DefaultIcon: "🌐",
 		DetailFields: []FieldMeta{
 			{Name: "exchange", Label: "Exchange", Kind: "TEXT", Required: true},
 			{Name: "platform", Label: "Platform", Kind: "TEXT"},
@@ -160,4 +165,12 @@ func MetaFor(assetType string) (TypeMeta, bool) {
 		}
 	}
 	return TypeMeta{}, false
+}
+
+// QuantityScaleFor is the most decimal places a quantity of this asset type may have.
+func QuantityScaleFor(assetType string) int32 {
+	if m, ok := MetaFor(assetType); ok {
+		return m.QuantityScale // ID_STOCK: whole shares (lots may carry one decimal, see lotsScale)
+	}
+	return quantityScale
 }

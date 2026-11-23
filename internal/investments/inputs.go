@@ -67,7 +67,8 @@ type cryptoDetails struct {
 
 type idStockDetails struct {
 	Broker *string `json:"broker,omitempty" validate:"omitempty,max=60"`
-	Lots   *int64  `json:"lots" validate:"required,min=0,max=1000000000"`
+	// Lots may have one decimal place (0.5 lot = 50 shares); it is stored as a JSON number.
+	Lots *json.Number `json:"lots" validate:"required" swaggertype:"number" example:"2.5"`
 }
 
 type usStockDetails struct {
@@ -454,7 +455,7 @@ func buildSpec(assetType, name string, b *base, quantity *decimal.Decimal, detai
 
 // checkMoneyFields validates magnitudes and scales of all numeric inputs.
 func checkMoneyFields(f map[string]any, s *Spec, b *base, quantity *decimal.Decimal) error {
-	checkDec(f, "quantity", quantity, 18, false)
+	checkDec(f, "quantity", quantity, QuantityScaleFor(s.AssetType), false)
 	checkDec(f, "avgBuyPrice", b.AvgBuyPrice, 8, false)
 	checkDec(f, "manualPrice", b.ManualPrice, 8, false)
 	checkDec(f, "fees", b.Fees, 8, false)
@@ -476,11 +477,21 @@ func finalize(s Spec, f map[string]any) (Spec, error) {
 	switch d := s.Details.(type) {
 	case idStockDetails:
 		if d.Lots != nil {
-			s.Quantity = decimal.NewFromInt(*d.Lots).Mul(decimal.NewFromInt(LotSize)) // quantity = lots × 100
+			lots, err := decimal.NewFromString(d.Lots.String())
+			switch {
+			case err != nil:
+				f["details.lots"] = "must be a number"
+			default:
+				checkDec(f, "details.lots", &lots, lotsScale, false)
+				if lots.GreaterThan(decimal.NewFromInt(1_000_000_000)) {
+					f["details.lots"] = "is too large"
+				}
+				s.Quantity = lots.Mul(decimal.NewFromInt(LotSize)) // quantity = lots × 100
+			}
 		}
 	case cryptoDetails:
 		if d.StakedQuantity != nil {
-			checkDec(f, "details.stakedQuantity", d.StakedQuantity, 18, false)
+			checkDec(f, "details.stakedQuantity", d.StakedQuantity, QuantityScaleFor(TypeCrypto), false)
 			if _, bad := f["details.stakedQuantity"]; !bad && d.StakedQuantity.GreaterThan(s.Quantity) {
 				f["details.stakedQuantity"] = "must not exceed quantity"
 			}
@@ -638,7 +649,9 @@ func (p PatchInput) apply(inv sqlc.Investment, baseCurrency string) (Spec, error
 		if meta.QuantityMode == QuantityLots {
 			f["quantity"] = "is derived from details.lots for " + s.AssetType
 		} else {
-			checkDec(f, "quantity", p.Quantity, 18, false)
+			if !p.Quantity.Equal(inv.Quantity) { // an unchanged legacy quantity is not re-validated
+				checkDec(f, "quantity", p.Quantity, QuantityScaleFor(s.AssetType), false)
+			}
 			s.Quantity = *p.Quantity
 		}
 	}

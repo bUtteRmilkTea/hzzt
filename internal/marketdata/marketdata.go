@@ -331,6 +331,29 @@ func (s *Service) ResolveInstrument(ctx context.Context, assetType string, expli
 	return m.ID, nil
 }
 
+// ambiguousRankLimit is the market-cap rank beyond which a shared symbol is not trusted: when
+// several coins carry the symbol and even the best of them ranks lower than this, the symbol
+// does not clearly name one coin (a well-known coin such as BTC, ranked 1, is never ambiguous).
+const ambiguousRankLimit = 500
+
+// SymbolAmbiguous reports whether a symbol does not clearly name one instrument: several active
+// instruments share it and the best-ranked one has no rank or ranks below ambiguousRankLimit.
+// It is used to decide whether a default AUTO price can be linked without asking the user.
+func (s *Service) SymbolAmbiguous(ctx context.Context, assetType, symbol string) (bool, error) {
+	provider, kind, ok := providerKind(assetType)
+	if !ok {
+		return false, nil
+	}
+	m, err := s.q.SymbolMatches(ctx, sqlc.SymbolMatchesParams{Provider: provider, Kind: kind, Symbol: symbol})
+	if err != nil {
+		return false, err
+	}
+	if m.N < 2 {
+		return false, nil
+	}
+	return m.BestRank == 0 || m.BestRank > ambiguousRankLimit, nil
+}
+
 // --- prices ------------------------------------------------------------------------
 
 type target struct {
@@ -385,7 +408,10 @@ func (s *Service) fetchAndStore(ctx context.Context, q *sqlc.Queries, ts []targe
 			ids = append(ids, n)
 			byExt[n] = t
 		}
-		quotes, _, err := s.opts.Crypto.Prices(ctx, ids)
+		quotes, calls, err := s.opts.Crypto.Prices(ctx, ids)
+		// One CMC call carries up to coinmarketcap.BatchSize coins and costs about one credit, so
+		// the credits of a run are the number of calls, not the number of holdings.
+		s.opts.Log.Info().Int("coins", len(ids)).Int("calls", calls).Int("quotes", len(quotes)).Msg("cmc price refresh (credits used ~ calls)")
 		if err != nil {
 			return stored, err
 		}

@@ -153,6 +153,12 @@ func Value(inv sqlc.Investment, mp *MarketPrice, cc *currency.ConversionContext,
 			limit = mp.StaleAfter
 		}
 		v.IsStale = now.Sub(mp.AsOf) > limit
+		if v.IsStale { // a stale market price still counts (better than the typed one), flagged
+			v.Warnings = append(v.Warnings, currency.Warning{
+				Code: CodePriceStale, Label: inv.Name,
+				Message: fmt.Sprintf("The market price of %s is older than %s", inv.Name, limit),
+			})
+		}
 	}
 	v.Price = price
 
@@ -161,6 +167,12 @@ func Value(inv sqlc.Investment, mp *MarketPrice, cc *currency.ConversionContext,
 	if inv.ManualCurrentValue.Valid {
 		marketValue = inv.ManualCurrentValue.Decimal
 		v.PriceSource = SourceManualValue
+		if inv.PriceMode == PriceModeAuto {
+			v.Warnings = append(v.Warnings, currency.Warning{
+				Code: CodeManualValueOver, Label: inv.Name,
+				Message: inv.Name + " is priced by the market but a manual current value is set and wins: clear it to follow the market",
+			})
+		}
 	}
 	cost := inv.Quantity.Mul(inv.AvgBuyPrice).Add(inv.Fees)
 
@@ -235,7 +247,7 @@ func Summarize(baseCurrency string, vals []Valuation) Summary {
 	for _, v := range vals {
 		if v.Base == nil {
 			for _, w := range v.Warnings {
-				if !seen[w.Message] {
+				if w.Code == currency.CodeFXRateUnavailable && !seen[w.Message] {
 					seen[w.Message] = true
 					s.Warnings = append(s.Warnings, w)
 				}

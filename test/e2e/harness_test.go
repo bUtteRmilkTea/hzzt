@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -28,6 +29,7 @@ import (
 	"github.com/JonathanRainee/hzzt/internal/currency"
 	"github.com/JonathanRainee/hzzt/internal/dashboard"
 	"github.com/JonathanRainee/hzzt/internal/db"
+	"github.com/JonathanRainee/hzzt/internal/db/migrations"
 	"github.com/JonathanRainee/hzzt/internal/db/sqlc"
 	"github.com/JonathanRainee/hzzt/internal/goals"
 	"github.com/JonathanRainee/hzzt/internal/investments"
@@ -324,4 +326,18 @@ func NewTestServerWithMarketLimits(t *testing.T, limits marketdata.Limits) *Test
 	testMarketLimits = &limits
 	t.Cleanup(func() { testMarketLimits = nil })
 	return NewTestServer(t)
+}
+
+// runMigrationUp executes the Up section of an embedded migration file inside the test transaction, so a
+// data migration can be tested against seeded rows (schema changes of the file must already be applied).
+func (s *TestServer) runMigrationUp(file string) {
+	s.t.Helper()
+	b, err := migrations.FS.ReadFile(file)
+	require.NoError(s.t, err)
+	up := string(b)
+	if i := strings.Index(up, "-- +goose Down"); i >= 0 {
+		up = up[:i]
+	}
+	_, err = s.Tx.Exec(context.Background(), up)
+	require.NoError(s.t, err)
 }

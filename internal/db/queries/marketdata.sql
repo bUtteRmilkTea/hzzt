@@ -38,6 +38,12 @@ WHERE provider = $1 AND kind = $2 AND active AND upper(symbol) = upper(sqlc.arg(
 ORDER BY rank ASC NULLS LAST, id
 LIMIT 1;
 
+-- name: SymbolMatches :one
+-- How many active instruments share a symbol, and the best (lowest) market-cap rank among them.
+SELECT count(*)::int AS n, COALESCE(min(rank), 0)::int AS best_rank
+FROM market_instruments
+WHERE provider = $1 AND kind = $2 AND active AND upper(symbol) = upper(sqlc.arg('symbol')::text);
+
 -- name: UpsertMarketPrice :exec
 INSERT INTO market_prices (instrument_id, price, currency, change_24h_pct, as_of, fetched_at)
 VALUES ($1, $2, $3, sqlc.narg('change_24h_pct'), $4, now())

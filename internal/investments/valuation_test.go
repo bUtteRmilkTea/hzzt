@@ -308,3 +308,56 @@ func TestAllocateSplitsTheBaseValueExactly(t *testing.T) {
 		assert.True(t, d("5").Equal(a.MarketValue))
 	})
 }
+
+func TestValueWarnings(t *testing.T) {
+	cc := ctx("USD", true, usdIDR, nil)
+	codes := func(v Valuation) []string {
+		out := []string{}
+		for _, w := range v.Warnings {
+			out = append(out, w.Code)
+		}
+		return out
+	}
+
+	t.Run("a stale market price counts and is flagged PRICE_STALE", func(t *testing.T) {
+		i := inv(TypeCrypto, "USD", "1", "1000", "1000", "0")
+		i.PriceMode = PriceModeAuto
+		v := Value(i, &MarketPrice{Price: d("64000"), AsOf: now.Add(-3 * time.Hour)}, cc, now)
+		assert.True(t, v.IsStale)
+		assert.Equal(t, d("64000"), v.MarketValue, "the stale price still counts")
+		assert.Equal(t, []string{CodePriceStale}, codes(v))
+	})
+
+	t.Run("a fresh market price has no warning", func(t *testing.T) {
+		i := inv(TypeCrypto, "USD", "1", "1000", "1000", "0")
+		i.PriceMode = PriceModeAuto
+		v := Value(i, &MarketPrice{Price: d("64000"), AsOf: now.Add(-time.Minute)}, cc, now)
+		assert.Empty(t, v.Warnings)
+	})
+
+	t.Run("a manual value on an AUTO holding wins and says so", func(t *testing.T) {
+		i := inv(TypeCrypto, "USD", "1", "1000", "1000", "0")
+		i.PriceMode = PriceModeAuto
+		i.ManualCurrentValue = nd("40000")
+		v := Value(i, &MarketPrice{Price: d("64000"), AsOf: now}, cc, now)
+		assert.Equal(t, d("40000"), v.MarketValue)
+		assert.Equal(t, SourceManualValue, v.PriceSource)
+		assert.Equal(t, []string{CodeManualValueOver}, codes(v))
+	})
+
+	t.Run("a manual value on a MANUAL holding has no warning", func(t *testing.T) {
+		i := inv(TypeCrypto, "USD", "1", "1000", "1000", "0")
+		i.ManualCurrentValue = nd("40000")
+		assert.Empty(t, Value(i, nil, cc, now).Warnings)
+	})
+
+	t.Run("only FX warnings reach the portfolio summary", func(t *testing.T) {
+		i := inv(TypeCrypto, "IDR", "1", "1", "1", "0")
+		i.PriceMode = PriceModeAuto
+		v := Value(i, &MarketPrice{Price: d("1"), AsOf: now.Add(-3 * time.Hour)}, ctx("EUR", true, nil, nil), now)
+		require.Nil(t, v.Base)
+		s := Summarize("EUR", []Valuation{v})
+		require.Len(t, s.Warnings, 1)
+		assert.Equal(t, currency.CodeFXRateUnavailable, s.Warnings[0].Code)
+	})
+}

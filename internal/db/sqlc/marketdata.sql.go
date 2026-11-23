@@ -300,6 +300,31 @@ func (q *Queries) SetInvestmentInstrument(ctx context.Context, arg SetInvestment
 	return err
 }
 
+const symbolMatches = `-- name: SymbolMatches :one
+SELECT count(*)::int AS n, COALESCE(min(rank), 0)::int AS best_rank
+FROM market_instruments
+WHERE provider = $1 AND kind = $2 AND active AND upper(symbol) = upper($3::text)
+`
+
+type SymbolMatchesParams struct {
+	Provider string `json:"provider"`
+	Kind     string `json:"kind"`
+	Symbol   string `json:"symbol"`
+}
+
+type SymbolMatchesRow struct {
+	N        int32 `json:"n"`
+	BestRank int32 `json:"best_rank"`
+}
+
+// How many active instruments share a symbol, and the best (lowest) market-cap rank among them.
+func (q *Queries) SymbolMatches(ctx context.Context, arg SymbolMatchesParams) (SymbolMatchesRow, error) {
+	row := q.db.QueryRow(ctx, symbolMatches, arg.Provider, arg.Kind, arg.Symbol)
+	var i SymbolMatchesRow
+	err := row.Scan(&i.N, &i.BestRank)
+	return i, err
+}
+
 const tryJobLock = `-- name: TryJobLock :one
 SELECT pg_try_advisory_xact_lock(hashtextextended($1::text, 0))
 `

@@ -156,7 +156,7 @@ Frontend change only in the UI. One backend check: `GET /investments/grouped` mu
 
 **Progress** (ticked when the phase's branch passes lint/tests and is pushed with a PR):
 - [x] Phase F: ledger correctness (top up, reclassify, calendar net, net worth contributions, system keys, seeds)
-- [ ] Phase G: crypto priced by CMC
+- [x] Phase G: crypto priced by CMC
 - [ ] Phase H: currency model and nullable estimated change
 - [ ] Phase I: wallet delete impact, multi-category filter
 - [ ] Phase J: single-item wrapper test
@@ -174,7 +174,7 @@ Order: F first (it fixes the numbers the user sees), then G, then H, then I and 
 
 **Phase F tasks (all done, Nov 23, 2026).** F-T1 failing test for top-up as income; F-T2 `TopUp` as adjustment; F-T3 migration 00017 and its test; F-T4 reclassify via PATCH and error codes; F-T5 `Day.net`, explicit type switch, SQL filter check; F-T6 history contribution fields; F-T7 `systemKey`; F-T8 `system_key` column, seed icons, alias conflict; F-T9 swagger and Appendix B.
 
-**Phase G tasks.** G-T1 prove the cause with a test (default create is MANUAL); G-T2 auto-link on create; G-T3 fallback and warnings; G-T4 batched refresh check and credit logging; G-T5 stale handling; G-T6 one valuation path for summary, grouped, assets summary, net worth and snapshots, with the equality test; G-T7 backfill migration (after Q5); G-T8 swagger.
+**Phase G tasks (all done, Nov 23, 2026).** G-T1 prove the cause with a test (default create is MANUAL); G-T2 auto-link on create; G-T3 fallback and warnings; G-T4 batched refresh check and credit logging; G-T5 stale handling; G-T6 one valuation path for summary, grouped, assets summary, net worth and snapshots, with the equality test; G-T7 backfill migration (after Q5); G-T8 swagger.
 
 **Phase H tasks.** H-T1 FX default test; H-T2 DTO fields; H-T3 quota and cross-rate check in the job; H-T4 nullable migration; H-T5 readers audit; H-T6 `valuedBy` docs.
 
@@ -264,3 +264,13 @@ New open question **Q11**: for `FLAT`, is a 0.05% band right, or should it be a 
 - F-T3 / C10: `transactions.system_key` (migration 00017) is stored at write time (top up, opening balance, balance adjustment) and backfilled by exact title. The down migration turns every `BALANCE_TOP_UP` adjustment back into an INCOME, including new ones. Dev database copy: 4 top-up rows moved, wallet balance sum unchanged, up/down/up verified.
 - F-T6: contributions are ADJUSTMENT and OPENING_BALANCE rows with `occurred_at` from the first point's day at 00:15 UTC (when the snapshot runs) to now, converted with the FX rate of the transaction's own date (`BuildContextAt`). A flow on the first point's day after 00:15 UTC counts as a contribution. Missing rate: left out with an `FX_RATE_UNAVAILABLE` warning (`warnings[]` is new on the history response). Phase K reuses this.
 - F-T8: migration 00018 adds `categories.system_key`, a unique `(space_id, system_key)` index, and new icons. The seed `Dividend` shared the chart icon with `Investment`, so it was changed too (to a bank), and existing untouched rows are updated (only where the icon is still the old one). `Subscriptions` is now a repeat symbol. A seed-icon uniqueness unit test was added. D-B3: seeds stay in English (blocked by Q8), only the key was added. `CATEGORY_EXISTS_SIMILAR` is checked on create and on rename/type change, against live categories of the same type that are in the same alias group or carry the same key. An exact name is still `CATEGORY_NAME_TAKEN`.
+
+**Nov 23, 2026, Phase G (`feat/crypto-cmc-pricing`, stacked on `feat/ledger-correctness` because of the migration numbers: this is 00019).** G-T1 to G-T8 done.
+- G-T1: the cause was confirmed by a failing test (a crypto created without `priceMode` was MANUAL, unlinked, valued at the typed price).
+- G-T2/T3 (D-B4): crypto defaults to AUTO when `priceMode` is absent (`Spec.AutoDefault`); the type metadata `defaults.priceMode` is now `AUTO` for CRYPTO only. If the coin is not found, or is ambiguous, the holding is created as MANUAL with a `PRICE_NOT_LINKED` item in `valuation.warnings`. An explicit `priceMode` never falls back (an explicit AUTO with an unknown symbol is still `422 INSTRUMENT_NOT_FOUND`). "Ambiguous" was not defined in the plan, so it is defined here: several active coins share the symbol and the best-ranked one has no rank or ranks below 500 (`marketdata.SymbolAmbiguous`). BTC (rank 1, with a clone at rank 3000) is not ambiguous. If you want another rule, change `ambiguousRankLimit`.
+- Warnings: `PRICE_STALE` (a stale market price still counts, Q9 default) and `MANUAL_VALUE_OVERRIDES_MARKET` are added by `Value`. The portfolio `summary.warnings` still carries only `FX_RATE_UNAVAILABLE`.
+- G-T4 / C5: batching already existed (100 coins per call). Added the credit log line (`coins`, `calls`, `quotes`, credits ~ calls) and an assertion that N holdings cost one call.
+- G-T6: the list summary, the grouped view, the assets summary, the net-worth summary, the live history point and the snapshot job already shared one valuation path. No code change, one equality test added.
+- G-T7 (Q5 yes): migration 00019 flips only `price_mode` for live CRYPTO rows with an instrument and no manual current value; rows without an instrument are listed with `RAISE NOTICE`. The test asserts avg_buy_price, manual_price, fees, quantity and manual value are identical before and after. The down migration is a no-op (a flipped row cannot be told from one the user set to AUTO). On a copy of the dev database no row was flipped (4 MANUAL crypto without an instrument, 1 already AUTO).
+- Not done on purpose: the optional `GET /investments/{id}/price` endpoint (the list DTO already carries `priceSource`, `priceAsOf`, `isStale`).
+- Existing test helpers that need typed prices (`crypto()` in grouping tests) now send `priceMode: MANUAL`.

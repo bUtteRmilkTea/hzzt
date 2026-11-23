@@ -76,6 +76,55 @@ func (q *Queries) CategoryStats(ctx context.Context, arg CategoryStatsParams) ([
 	return items, nil
 }
 
+const countTransactions = `-- name: CountTransactions :one
+SELECT count(*)::int
+FROM transactions t
+LEFT JOIN wallets w     ON w.id = t.wallet_id
+LEFT JOIN wallets tw    ON tw.id = t.to_wallet_id
+LEFT JOIN categories c  ON c.id = t.category_id
+LEFT JOIN investments inv ON inv.id = t.investment_id
+LEFT JOIN manual_assets ma ON ma.id = t.manual_asset_id
+WHERE t.space_id = $1
+  AND ($2::timestamptz IS NULL OR t.occurred_at >= $2)
+  AND ($3::timestamptz IS NULL OR t.occurred_at < $3)
+  AND ($4::text[] IS NULL OR t.type = ANY($4::text[]))
+  AND ($5::uuid[] IS NULL OR t.category_id = ANY($5::uuid[]))
+  AND ($6::uuid[] IS NULL
+       OR t.wallet_id = ANY($6::uuid[])
+       OR t.to_wallet_id = ANY($6::uuid[]))
+  AND ($7::text IS NULL
+       OR t.title ILIKE $7 OR t.note ILIKE $7
+       OR c.name ILIKE $7 OR w.name ILIKE $7 OR tw.name ILIKE $7
+       OR inv.name ILIKE $7 OR inv.symbol ILIKE $7
+       OR ma.name ILIKE $7 OR ma.counterparty_name ILIKE $7)
+`
+
+type CountTransactionsParams struct {
+	SpaceID     uuid.UUID   `json:"space_id"`
+	FromTs      *time.Time  `json:"from_ts"`
+	ToTs        *time.Time  `json:"to_ts"`
+	Types       []string    `json:"types"`
+	CategoryIds []uuid.UUID `json:"category_ids"`
+	WalletIds   []uuid.UUID `json:"wallet_ids"`
+	Q           *string     `json:"q"`
+}
+
+// Same filters as ListTransactions, without the cursor and the limit.
+func (q *Queries) CountTransactions(ctx context.Context, arg CountTransactionsParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countTransactions,
+		arg.SpaceID,
+		arg.FromTs,
+		arg.ToTs,
+		arg.Types,
+		arg.CategoryIds,
+		arg.WalletIds,
+		arg.Q,
+	)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createTransaction = `-- name: CreateTransaction :one
 INSERT INTO transactions (
     space_id, type, direction, title, note, amount, currency, wallet_id, category_id,

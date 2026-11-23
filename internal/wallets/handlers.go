@@ -54,6 +54,7 @@ func (h *Handler) Mount(r chi.Router) {
 		r.Put(p+"/{id}/balance", h.setBalance)
 		r.Patch(p+"/{id}/display-prefs", h.updateDisplayPrefs)
 		r.Delete(p+"/{id}", h.delete)
+		r.Get(p+"/{id}/delete-impact", h.deleteImpact)
 	})
 }
 
@@ -478,9 +479,10 @@ func (h *Handler) setBalance(w http.ResponseWriter, r *http.Request) {
 //	@Security	BearerAuth
 //	@Param		spaceId	path	string	true	"Space ID"
 //	@Param		id		path	string	true	"Wallet ID"
-//	@Param		force	query	bool	false	"Required when the balance is not zero"
+//	@Param		force	query	bool	false	"Required when the balance is not zero or the wallet has transactions"
 //	@Success	204
 //	@Failure	404	{object}	httpx.ErrorEnvelope
+//	@Failure	409	{object}	httpx.ErrorEnvelope	"WALLET_HAS_TRANSACTIONS (details: transactions, transfers, goalReserves)"
 //	@Failure	422	{object}	httpx.ErrorEnvelope	"WALLET_HAS_BALANCE"
 //	@Router		/spaces/{spaceId}/wallets/{id} [delete]
 func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
@@ -503,6 +505,46 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// DeleteImpactDTO is what deleting a wallet affects.
+type DeleteImpactDTO struct {
+	// Transactions counts every transaction that points at the wallet (the history that stays behind); Transfers is how many
+	// of them are transfers to or from another of the space's wallets.
+	Transactions int `json:"transactions" example:"12"`
+	Transfers    int `json:"transfers" example:"3"`
+	// GoalReserves is the number of goal reservations that are removed with the wallet.
+	GoalReserves int          `json:"goalReserves" example:"1"`
+	Balance      money.Amount `json:"balance" swaggertype:"string" example:"134.26"`
+	Currency     string       `json:"currency" example:"USD"`
+}
+
+// deleteImpact godoc
+//
+//	@Summary		What deleting a wallet affects
+//	@Description	Counts the wallet's transactions (as source or destination), the transfers among them and the goal reservations that go with it, plus its balance. DELETE needs force=true when the balance is not zero or the wallet has transactions.
+//	@Tags			wallets
+//	@Security		BearerAuth
+//	@Produce		json
+//	@Param			spaceId	path		string	true	"Space ID"
+//	@Param			id		path		string	true	"Wallet ID"
+//	@Success		200		{object}	DeleteImpactDTO
+//	@Failure		404		{object}	httpx.ErrorEnvelope
+//	@Router			/spaces/{spaceId}/wallets/{id}/delete-impact [get]
+func (h *Handler) deleteImpact(w http.ResponseWriter, r *http.Request) {
+	id, err := walletID(r)
+	var imp DeleteImpact
+	if err == nil {
+		imp, err = h.svc.DeleteImpact(r.Context(), spaces.SpaceIDFromContext(r.Context()), id)
+	}
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, DeleteImpactDTO{
+		Transactions: imp.Transactions, Transfers: imp.Transfers, GoalReserves: imp.GoalReserves,
+		Balance: money.NewAmount(imp.Balance, imp.Currency), Currency: imp.Currency,
+	})
 }
 
 // reorder godoc

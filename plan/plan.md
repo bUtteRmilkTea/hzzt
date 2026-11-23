@@ -1122,6 +1122,7 @@ DELIVERABLES (report back)
 | FX_RATE_UNAVAILABLE | 422 (internal; normally surfaced as a warning) | P5 |
 | CATEGORY_NAME_TAKEN, BUDGET_NOT_ALLOWED, CATEGORY_TYPE_LOCKED, CATEGORY_TYPE_MISMATCH | 409/422 | P6, P8 |
 | WALLET_CURRENCY_LOCKED, WALLET_HAS_BALANCE | 422 | P7 |
+| WALLET_HAS_TRANSACTIONS | 409 (details: transactions, transfers, goalReserves; `?force=true` overrides) | Feedback round 2, Phase I |
 | USE_SPECIFIC_ENDPOINT | 422 | P8 |
 | TYPE_CHANGE_NOT_ALLOWED | 422 | Feedback round 2, Phase F |
 | CATEGORY_EXISTS_SIMILAR | 409 (details.existingId; `?force=true` overrides) | Feedback round 2, Phase F |

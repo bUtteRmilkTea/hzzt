@@ -158,7 +158,7 @@ Frontend change only in the UI. One backend check: `GET /investments/grouped` mu
 - [x] Phase F: ledger correctness (top up, reclassify, calendar net, net worth contributions, system keys, seeds)
 - [x] Phase G: crypto priced by CMC
 - [x] Phase H: currency model and nullable estimated change (the 5.5% data migration part of H-T4 is blocked by Q6, see section 12)
-- [ ] Phase I: wallet delete impact, multi-category filter
+- [x] Phase I: wallet delete impact, list total (the multi-category filter already existed, C3)
 - [ ] Phase J: single-item wrapper test
 - [ ] Phase K: growth history series (investments and assets, rising or falling per timeframe)
 
@@ -178,7 +178,7 @@ Order: F first (it fixes the numbers the user sees), then G, then H, then I and 
 
 **Phase H tasks (done except the Q6 data migration, Nov 23, 2026).** H-T1 FX default test; H-T2 DTO fields; H-T3 quota and cross-rate check in the job; H-T4 nullable migration; H-T5 readers audit; H-T6 `valuedBy` docs.
 
-**Phase I tasks.** I-T1 delete-impact endpoint; I-T2 delete guard; I-T3 `categoryIds`; I-T4 list `total` if missing.
+**Phase I tasks (done, Nov 23, 2026; I-T3 dropped by C3).** I-T1 delete-impact endpoint; I-T2 delete guard; I-T3 `categoryIds`; I-T4 list `total` if missing.
 
 **Phase J tasks.** J-T1 test one holding per wrapper and category; fix only if it fails.
 
@@ -281,3 +281,8 @@ New open question **Q11**: for `FLAT`, is a 0.05% band right, or should it be a 
 - H-T4 (D-B6): migration 00020 makes `estimated_annual_change_pct` nullable with no default. **Blocked by Q6 and not done:** turning untouched 5.5 rows into NULL. All existing rows keep their value (13 rows on the dev database, all exactly 5.5, which shows why Q6 matters: the data cannot tell a typed 5.5 from the old default). New rows store NULL when the field is absent. PATCH accepts `null` to clear it.
 - H-T5 audit (C9): the field is only stored and echoed. No goal, projection, net-worth or snapshot code reads it (searched `internal/`), so there is no reader to change; `manual_assets` was already nullable. Changed: create and patch inputs, the DTO, the type metadata (`defaults.estimatedAnnualChangePct` is now always null), the two queries, and the shared-investment row copy. `DefaultEstimatedAnnualChangePct` was removed.
 - H-T6 (decision for the implementer): `valuedBy` was not added. `valuation.priceSource` already has the same three values (`MARKET`, `MANUAL`, `MANUAL_VALUE`); the swagger comment now documents which value wins.
+
+**Nov 23, 2026, Phase I (`feat/wallet-delete-impact`, stacked on `feat/fx-and-defaults` so the plan file edits do not conflict; no migration).** I-T1, I-T2, I-T4 done, I-T3 dropped (C3, `categoryIds` exists).
+- I-T1: `GET /spaces/{spaceId}/wallets/{id}/delete-impact` returns `transactions` (every transaction row pointing at the wallet as source or destination, so it includes opening balances and transfers), `transfers` (own-wallet transfers among them, not trades or settlements), `goalReserves`, `balance` and `currency`. Transactions are hard-deleted rows in this schema, so "live rows only" is automatic.
+- I-T2 (C4, D-B7): folded into the existing `force` rule, no new `?confirm=` or header. `DELETE` without `force=true` is `422 WALLET_HAS_BALANCE` when the balance is not zero (unchanged), else `409 WALLET_HAS_TRANSACTIONS` with the counts in `details` when the wallet has any transaction. A wallet with no history still deletes without `force`.
+- I-T4: `total` added to the transactions list envelope (count of all rows matching the filters, independent of the cursor and page size). It was missing (only `nextCursor`).

@@ -4947,7 +4947,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "boolean",
-                        "description": "Required when the balance is not zero",
+                        "description": "Required when the balance is not zero or the wallet has transactions",
                         "name": "force",
                         "in": "query"
                     }
@@ -4958,6 +4958,12 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "WALLET_HAS_TRANSACTIONS (details: transactions, transfers, goalReserves)",
                         "schema": {
                             "$ref": "#/definitions/httpx.ErrorEnvelope"
                         }
@@ -5094,6 +5100,53 @@ const docTemplate = `{
                         "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/spaces/{spaceId}/wallets/{id}/delete-impact": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Counts the wallet's transactions (as source or destination), the transfers among them and the goal reservations that go with it, plus its balance. DELETE needs force=true when the balance is not zero or the wallet has transactions.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "wallets"
+                ],
+                "summary": "What deleting a wallet affects",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Space ID",
+                        "name": "spaceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Wallet ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/wallets.DeleteImpactDTO"
                         }
                     },
                     "404": {
@@ -8018,6 +8071,11 @@ const docTemplate = `{
                 },
                 "nextCursor": {
                     "type": "string"
+                },
+                "total": {
+                    "description": "Total is how many transactions match the filters in all pages (not just this one).",
+                    "type": "integer",
+                    "example": 42
                 }
             }
         },
@@ -8466,6 +8524,33 @@ const docTemplate = `{
                 },
                 "templateId": {
                     "type": "string"
+                }
+            }
+        },
+        "wallets.DeleteImpactDTO": {
+            "type": "object",
+            "properties": {
+                "balance": {
+                    "type": "string",
+                    "example": "134.26"
+                },
+                "currency": {
+                    "type": "string",
+                    "example": "USD"
+                },
+                "goalReserves": {
+                    "description": "GoalReserves is the number of goal reservations that are removed with the wallet.",
+                    "type": "integer",
+                    "example": 1
+                },
+                "transactions": {
+                    "description": "Transactions counts every transaction that points at the wallet (the history that stays behind); Transfers is how many\nof them are transfers to or from another of the space's wallets.",
+                    "type": "integer",
+                    "example": 12
+                },
+                "transfers": {
+                    "type": "integer",
+                    "example": 3
                 }
             }
         },

@@ -174,6 +174,8 @@ func ToDTO(d Detail) TransactionDTO {
 type ListResponse struct {
 	Items      []TransactionDTO `json:"items"`
 	NextCursor *string          `json:"nextCursor"`
+	// Total is how many transactions match the filters in all pages (not just this one).
+	Total int `json:"total" example:"42"`
 }
 
 // DaySummaryDTO is one local date's totals in the space base currency.
@@ -576,7 +578,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, err)
 		return
 	}
-	out := ListResponse{Items: make([]TransactionDTO, 0, len(res.Items))}
+	out := ListResponse{Items: make([]TransactionDTO, 0, len(res.Items)), Total: res.Total}
 	for _, d := range res.Items {
 		out.Items = append(out.Items, ToDTO(d))
 	}

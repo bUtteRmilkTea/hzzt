@@ -32,9 +32,10 @@ const (
 
 // Error codes owned by this package (see plan Appendix B).
 const (
-	CodeWalletNotFound       = "WALLET_NOT_FOUND"
-	CodeWalletCurrencyLocked = "WALLET_CURRENCY_LOCKED"
-	CodeWalletHasBalance     = "WALLET_HAS_BALANCE"
+	CodeWalletNotFound        = "WALLET_NOT_FOUND"
+	CodeWalletCurrencyLocked  = "WALLET_CURRENCY_LOCKED"
+	CodeWalletHasBalance      = "WALLET_HAS_BALANCE"
+	CodeWalletHasTransactions = "WALLET_HAS_TRANSACTIONS"
 )
 
 var (
@@ -330,6 +331,16 @@ func (s *Service) Delete(ctx context.Context, spaceID, id uuid.UUID, force bool)
 		if !w.Balance.IsZero() && !force {
 			return errHasBalance
 		}
+		if !force {
+			imp, err := s.deleteImpact(ctx, q, w)
+			if err != nil {
+				return err
+			}
+			if imp.Transactions > 0 {
+				return apperror.Conflict(CodeWalletHasTransactions, "The wallet has transactions that stay in the history; pass force=true to delete it anyway").
+					WithDetails(map[string]any{"transactions": imp.Transactions, "transfers": imp.Transfers, "goalReserves": imp.GoalReserves})
+			}
+		}
 		// the wallet's goal reservations go with it
 		if err := q.DeleteAllocationsForWallet(ctx, id); err != nil {
 			return err
@@ -337,6 +348,39 @@ func (s *Service) Delete(ctx context.Context, spaceID, id uuid.UUID, force bool)
 		_, err = q.SoftDeleteWallet(ctx, sqlc.SoftDeleteWalletParams{ID: id, SpaceID: spaceID})
 		return err
 	})
+}
+
+// DeleteImpact is what deleting a wallet affects.
+type DeleteImpact struct {
+	// Transactions counts every transaction row that points at the wallet; Transfers is how many of those are
+	// transfers to or from another own wallet. GoalReserves counts the goal reservations that go with the wallet.
+	Transactions, Transfers, GoalReserves int
+	Balance                               decimal.Decimal
+	Currency                              string
+}
+
+func (s *Service) deleteImpact(ctx context.Context, q *sqlc.Queries, w sqlc.Wallet) (DeleteImpact, error) {
+	row, err := q.WalletDeleteImpact(ctx, uuid.NullUUID{UUID: w.ID, Valid: true})
+	if err != nil {
+		return DeleteImpact{}, err
+	}
+	n, err := q.CountAllocationsForWallet(ctx, w.ID)
+	if err != nil {
+		return DeleteImpact{}, err
+	}
+	return DeleteImpact{Transactions: int(row.Transactions), Transfers: int(row.Transfers), GoalReserves: int(n), Balance: w.Balance, Currency: strings.TrimSpace(w.Currency)}, nil
+}
+
+// DeleteImpact tells what deleting the wallet would affect, so the client can warn before it asks.
+func (s *Service) DeleteImpact(ctx context.Context, spaceID, id uuid.UUID) (DeleteImpact, error) {
+	w, err := s.q.GetWallet(ctx, sqlc.GetWalletParams{ID: id, SpaceID: spaceID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return DeleteImpact{}, errWalletNF
+	}
+	if err != nil {
+		return DeleteImpact{}, err
+	}
+	return s.deleteImpact(ctx, s.q, w)
 }
 
 // Reorder sets the display order; ids must list every live wallet exactly once.

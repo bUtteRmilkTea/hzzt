@@ -13,6 +13,17 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const countAllocationsForWallet = `-- name: CountAllocationsForWallet :one
+SELECT count(*)::int FROM goal_allocations WHERE wallet_id = $1
+`
+
+func (q *Queries) CountAllocationsForWallet(ctx context.Context, walletID uuid.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, countAllocationsForWallet, walletID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createGoal = `-- name: CreateGoal :one
 INSERT INTO goals (space_id, name, icon, color, target_amount, currency, target_date, created_by_id)
 VALUES ($1, $2, $3, $4, $5, $6, $8, $7)

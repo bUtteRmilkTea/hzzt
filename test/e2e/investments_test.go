@@ -157,18 +157,18 @@ func TestInvestmentTypesEndpoint(t *testing.T) {
 	res := s.Get("/api/v1/investment-types", bearer(u.AccessToken))
 	require.Equal(t, http.StatusOK, res.Status)
 	var metas []struct {
-		AssetType             string                                               `json:"assetType"`
-		QuoteCurrency         *string                                              `json:"quoteCurrency"`
-		QuoteCurrencyEditable bool                                                 `json:"quoteCurrencyEditable"`
-		SupportsAutoPrice     bool                                                 `json:"supportsAutoPrice"`
-		QuantityMode          string                                               `json:"quantityMode"`
-		LotSize               *int                                                 `json:"lotSize"`
-		SymbolRequired        bool                                                 `json:"symbolRequired"`
+		AssetType             string  `json:"assetType"`
+		QuoteCurrency         *string `json:"quoteCurrency"`
+		QuoteCurrencyEditable bool    `json:"quoteCurrencyEditable"`
+		SupportsAutoPrice     bool    `json:"supportsAutoPrice"`
+		QuantityMode          string  `json:"quantityMode"`
+		LotSize               *int    `json:"lotSize"`
+		SymbolRequired        bool    `json:"symbolRequired"`
 		Defaults              struct {
 			PriceMode                string
 			EstimatedAnnualChangePct *string
 		} `json:"defaults"`
-		DetailFields          []struct {
+		DetailFields []struct {
 			Name     string   `json:"name"`
 			Required bool     `json:"required"`
 			Options  []string `json:"options"`

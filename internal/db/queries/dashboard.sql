@@ -45,3 +45,34 @@ FROM transactions
 WHERE space_id = $1 AND type IN ('ADJUSTMENT', 'OPENING_BALANCE')
   AND occurred_at >= $2 AND occurred_at <= $3
 ORDER BY occurred_at;
+
+-- name: ListInvestmentTradeFlows :many
+-- BUY and SELL trades of the space's investments in a window, in the investment's quote currency.
+SELECT t.investment_action, t.quantity, t.unit_price, t.fee, t.occurred_at, i.quote_currency
+FROM transactions t
+JOIN investments i ON i.id = t.investment_id
+WHERE t.space_id = $1 AND t.type = 'TRANSFER' AND t.investment_action IN ('BUY', 'SELL')
+  AND t.occurred_at >= sqlc.arg('from_ts') AND t.occurred_at <= sqlc.arg('to_ts')
+ORDER BY t.occurred_at;
+
+-- name: ListUnfundedInvestmentCreations :many
+-- Investments added in a window with no trade at all (no funding wallet): their cost counts as money put in.
+SELECT i.quote_currency, i.quantity, i.avg_buy_price, i.fees, i.created_at
+FROM investments i
+WHERE i.space_id = $1 AND i.deleted_at IS NULL
+  AND i.created_at >= sqlc.arg('from_ts') AND i.created_at <= sqlc.arg('to_ts')
+  AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.investment_id = i.id);
+
+-- name: ListFixedAssetFlows :many
+-- Fixed assets bought (first value row, from 0) and disposed of (deleted) in a window.
+SELECT 'PURCHASE'::text AS flow, c.new_value AS value, a.currency, c.changed_at AS at
+FROM manual_asset_value_changes c
+JOIN manual_assets a ON a.id = c.asset_id
+WHERE a.space_id = $1 AND a.kind = 'FIXED_ASSET' AND c.previous_value = 0 AND c.reason = 'MANUAL'
+  AND c.changed_at >= sqlc.arg('from_ts') AND c.changed_at <= sqlc.arg('to_ts')
+UNION ALL
+SELECT 'DISPOSAL'::text, a.current_value, a.currency, a.deleted_at
+FROM manual_assets a
+WHERE a.space_id = $1 AND a.kind = 'FIXED_ASSET' AND a.deleted_at IS NOT NULL
+  AND a.deleted_at >= sqlc.arg('from_ts') AND a.deleted_at <= sqlc.arg('to_ts')
+ORDER BY 4;

@@ -129,6 +129,10 @@ type Point struct {
 	NetWorth decimal.Decimal
 	// Investments is the portfolio value of that day, in the same currency as NetWorth.
 	Investments decimal.Decimal
+	// The other components of the net worth that day (from the snapshot; computed now for the live point).
+	Cash, FixedAssets, Receivables, Liabilities decimal.Decimal
+	// Assets is everything owned: cash + investments + fixed assets + receivables (debt not subtracted).
+	Assets decimal.Decimal
 	// Live marks the point computed now for today (rather than read from a snapshot).
 	Live bool
 }
@@ -143,56 +147,16 @@ type History struct {
 	ChangePct *decimal.Decimal
 	// InvestmentsChangePct is the same for the portfolio value.
 	InvestmentsChangePct *decimal.Decimal
-	// NetContributions is the money put into (or taken out of) the wallets from outside between the
-	// first and the last point: adjustments, top ups and opening balances, in the base currency.
+	// NetContributions, MarketChange and PerformancePct are the net-worth series' contribution maths (see Series.NetWorth).
 	NetContributions decimal.Decimal
-	// MarketChange is (last - first) - NetContributions: the part of the change that is not a deposit.
-	MarketChange decimal.Decimal
-	// PerformancePct is MarketChange / (first + NetContributions); nil when that base is not positive.
-	PerformancePct *decimal.Decimal
-	// Warnings lists contributions left out of NetContributions for lack of an FX rate.
+	MarketChange     decimal.Decimal
+	PerformancePct   *decimal.Decimal
+	// Series gives, for each line of the graph, the verdict of the requested range.
+	Series Series
+	// Coverage says how much of the requested range the stored history really covers.
+	Coverage Coverage
+	// Warnings lists contributions left out for lack of an FX rate.
 	Warnings []currency.Warning
-}
-
-// snapshotClock is the minute of the UTC day at which the daily snapshot runs (00:15).
-const snapshotClock = 15 * time.Minute
-
-// contributions sums the external money flows of the space between the first point's snapshot and now,
-// each converted with the FX rate of its own date. A flow without a rate is left out and reported.
-func (s *Service) contributions(ctx context.Context, spaceID uuid.UUID, firstDate string, now time.Time) (decimal.Decimal, []currency.Warning, error) {
-	d0, err := time.Parse("2006-01-02", firstDate)
-	if err != nil {
-		return decimal.Zero, nil, err
-	}
-	rows, err := s.q.ListNetWorthContributions(ctx, sqlc.ListNetWorthContributionsParams{
-		SpaceID: spaceID, OccurredAt: d0.Add(snapshotClock), OccurredAt_2: now,
-	})
-	if err != nil {
-		return decimal.Zero, nil, err
-	}
-	total := decimal.Zero
-	warns := []currency.Warning{}
-	ctxByDay := map[string]*currency.ConversionContext{}
-	for _, r := range rows {
-		day := utcDate(r.OccurredAt).Format("2006-01-02")
-		cc := ctxByDay[day]
-		if cc == nil {
-			if cc, err = s.currency.BuildContextAt(ctx, spaceID, r.OccurredAt); err != nil {
-				return decimal.Zero, nil, err
-			}
-			ctxByDay[day] = cc
-		}
-		v, err := currency.Convert(r.Amount, r.Currency, cc.BaseCurrency, cc)
-		if err != nil {
-			warns = append(warns, currency.Warning{Code: currency.CodeFXRateUnavailable, Message: fmt.Sprintf("No %s/%s rate for %s: a deposit was left out of the contributions", strings.TrimSpace(r.Currency), strings.TrimSpace(cc.BaseCurrency), day)})
-			continue
-		}
-		if r.Direction != nil && *r.Direction == "OUT" {
-			v = v.Neg()
-		}
-		total = total.Add(v)
-	}
-	return total, warns, nil
 }
 
 // Downsample keeps at most max points, always the first and the last, picking the
@@ -220,6 +184,10 @@ func Downsample(points []Point, max int) []Point {
 // rangeStart returns the first date of a range label, or ok=false for ALL.
 func rangeStart(rng string, today time.Time) (from time.Time, ok bool, err error) {
 	switch strings.ToUpper(strings.TrimSpace(rng)) {
+	case "1W":
+		return today.AddDate(0, 0, -7), true, nil
+	case "YTD":
+		return time.Date(today.Year(), time.January, 1, 0, 0, 0, 0, time.UTC), true, nil
 	case "1M":
 		return today.AddDate(0, -1, 0), true, nil
 	case "3M":
@@ -231,7 +199,7 @@ func rangeStart(rng string, today time.Time) (from time.Time, ok bool, err error
 	case "ALL":
 		return time.Time{}, false, nil
 	default:
-		return time.Time{}, false, apperror.Validation("Validation failed", map[string]any{"range": "must be one of: 1M 3M 6M 1Y ALL"})
+		return time.Time{}, false, apperror.Validation("Validation failed", map[string]any{"range": "must be one of: 1W 1M 3M 6M 1Y YTD ALL"})
 	}
 }
 
@@ -266,15 +234,24 @@ func (s *Service) History(ctx context.Context, spaceID uuid.UUID, rng string) (H
 		if d == todayStr { // replaced by the live point below
 			continue
 		}
-		h.Points = append(h.Points, Point{Date: d, NetWorth: sn.NetWorth, Investments: sn.Investments})
+		h.Points = append(h.Points, newPoint(d, sn.NetWorth, sn.Cash, sn.Investments, sn.FixedAssets, sn.Receivables, sn.Liabilities, false))
 	}
-	liveInv := decimal.Zero
+	zero := decimal.Zero
+	orZero := func(d *decimal.Decimal) decimal.Decimal {
+		if d == nil {
+			return zero
+		}
+		return *d
+	}
+	liveInv := zero
 	if live.Investments != nil {
 		liveInv = live.Investments.Value
 	}
-	h.Points = append(h.Points, Point{Date: todayStr, NetWorth: live.NetWorth, Investments: liveInv, Live: true})
+	h.Points = append(h.Points, newPoint(todayStr, live.NetWorth, live.Cash, liveInv, orZero(live.FixedAssets), orZero(live.Receivables), orZero(live.Liabilities), true))
 	h.Points = Downsample(h.Points, MaxHistoryPoints)
 
+	first, last := h.Points[0], h.Points[len(h.Points)-1]
+	h.Coverage = coverage(first.Date, from, bounded)
 	if len(h.Points) >= 2 {
 		pctOf := func(first, last decimal.Decimal) *decimal.Decimal {
 			if first.IsZero() {
@@ -283,24 +260,27 @@ func (s *Service) History(ctx context.Context, spaceID uuid.UUID, rng string) (H
 			pct := last.Sub(first).Div(first.Abs()).Mul(decimal.NewFromInt(100)).Round(2)
 			return &pct
 		}
-		n := len(h.Points) - 1
-		h.ChangePct = pctOf(h.Points[0].NetWorth, h.Points[n].NetWorth)
-		h.InvestmentsChangePct = pctOf(h.Points[0].Investments, h.Points[n].Investments)
-
-		first, last := h.Points[0], h.Points[n]
-		if !first.Live { // a live first point means one single point: nothing to compare
-			if h.NetContributions, h.Warnings, err = s.contributions(ctx, spaceID, first.Date, s.now()); err != nil {
-				return History{}, err
-			}
-		}
-		h.MarketChange = last.NetWorth.Sub(first.NetWorth).Sub(h.NetContributions)
-		if base := first.NetWorth.Add(h.NetContributions); base.IsPositive() {
-			pct := h.MarketChange.Div(base).Mul(decimal.NewFromInt(100)).Round(2)
-			h.PerformancePct = &pct
+		h.ChangePct = pctOf(first.NetWorth, last.NetWorth)
+		h.InvestmentsChangePct = pctOf(first.Investments, last.Investments)
+	}
+	var fl flows
+	if len(h.Points) >= 2 && !first.Live { // a live first point means one single point: nothing to compare
+		if fl, err = s.flowsBetween(ctx, spaceID, first.Date, s.now()); err != nil {
+			return History{}, err
 		}
 	}
+	h.Warnings = fl.warnings
 	if h.Warnings == nil {
 		h.Warnings = []currency.Warning{}
 	}
+	h.Series = buildSeries(first, last, fl)
+	h.NetContributions, h.MarketChange, h.PerformancePct = h.Series.NetWorth.NetContributions, h.Series.NetWorth.MarketChange, h.Series.NetWorth.PerformancePct
 	return h, nil
+}
+
+func newPoint(date string, netWorth, cash, inv, fixed, recv, liab decimal.Decimal, live bool) Point {
+	return Point{
+		Date: date, NetWorth: netWorth, Investments: inv, Cash: cash, FixedAssets: fixed, Receivables: recv, Liabilities: liab,
+		Assets: cash.Add(inv).Add(fixed).Add(recv), Live: live,
+	}
 }

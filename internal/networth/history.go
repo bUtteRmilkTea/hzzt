@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/shopspring/decimal"
 
+	"github.com/JonathanRainee/hzzt/internal/currency"
 	"github.com/JonathanRainee/hzzt/internal/db/sqlc"
 	"github.com/JonathanRainee/hzzt/internal/marketdata/jobs"
 	"github.com/JonathanRainee/hzzt/internal/platform/apperror"
@@ -142,6 +143,56 @@ type History struct {
 	ChangePct *decimal.Decimal
 	// InvestmentsChangePct is the same for the portfolio value.
 	InvestmentsChangePct *decimal.Decimal
+	// NetContributions is the money put into (or taken out of) the wallets from outside between the
+	// first and the last point: adjustments, top ups and opening balances, in the base currency.
+	NetContributions decimal.Decimal
+	// MarketChange is (last - first) - NetContributions: the part of the change that is not a deposit.
+	MarketChange decimal.Decimal
+	// PerformancePct is MarketChange / (first + NetContributions); nil when that base is not positive.
+	PerformancePct *decimal.Decimal
+	// Warnings lists contributions left out of NetContributions for lack of an FX rate.
+	Warnings []currency.Warning
+}
+
+// snapshotClock is the minute of the UTC day at which the daily snapshot runs (00:15).
+const snapshotClock = 15 * time.Minute
+
+// contributions sums the external money flows of the space between the first point's snapshot and now,
+// each converted with the FX rate of its own date. A flow without a rate is left out and reported.
+func (s *Service) contributions(ctx context.Context, spaceID uuid.UUID, firstDate string, now time.Time) (decimal.Decimal, []currency.Warning, error) {
+	d0, err := time.Parse("2006-01-02", firstDate)
+	if err != nil {
+		return decimal.Zero, nil, err
+	}
+	rows, err := s.q.ListNetWorthContributions(ctx, sqlc.ListNetWorthContributionsParams{
+		SpaceID: spaceID, OccurredAt: d0.Add(snapshotClock), OccurredAt_2: now,
+	})
+	if err != nil {
+		return decimal.Zero, nil, err
+	}
+	total := decimal.Zero
+	warns := []currency.Warning{}
+	ctxByDay := map[string]*currency.ConversionContext{}
+	for _, r := range rows {
+		day := utcDate(r.OccurredAt).Format("2006-01-02")
+		cc := ctxByDay[day]
+		if cc == nil {
+			if cc, err = s.currency.BuildContextAt(ctx, spaceID, r.OccurredAt); err != nil {
+				return decimal.Zero, nil, err
+			}
+			ctxByDay[day] = cc
+		}
+		v, err := currency.Convert(r.Amount, r.Currency, cc.BaseCurrency, cc)
+		if err != nil {
+			warns = append(warns, currency.Warning{Code: currency.CodeFXRateUnavailable, Message: fmt.Sprintf("No %s/%s rate for %s: a deposit was left out of the contributions", strings.TrimSpace(r.Currency), strings.TrimSpace(cc.BaseCurrency), day)})
+			continue
+		}
+		if r.Direction != nil && *r.Direction == "OUT" {
+			v = v.Neg()
+		}
+		total = total.Add(v)
+	}
+	return total, warns, nil
 }
 
 // Downsample keeps at most max points, always the first and the last, picking the
@@ -235,6 +286,21 @@ func (s *Service) History(ctx context.Context, spaceID uuid.UUID, rng string) (H
 		n := len(h.Points) - 1
 		h.ChangePct = pctOf(h.Points[0].NetWorth, h.Points[n].NetWorth)
 		h.InvestmentsChangePct = pctOf(h.Points[0].Investments, h.Points[n].Investments)
+
+		first, last := h.Points[0], h.Points[n]
+		if !first.Live { // a live first point means one single point: nothing to compare
+			if h.NetContributions, h.Warnings, err = s.contributions(ctx, spaceID, first.Date, s.now()); err != nil {
+				return History{}, err
+			}
+		}
+		h.MarketChange = last.NetWorth.Sub(first.NetWorth).Sub(h.NetContributions)
+		if base := first.NetWorth.Add(h.NetContributions); base.IsPositive() {
+			pct := h.MarketChange.Div(base).Mul(decimal.NewFromInt(100)).Round(2)
+			h.PerformancePct = &pct
+		}
+	}
+	if h.Warnings == nil {
+		h.Warnings = []currency.Warning{}
 	}
 	return h, nil
 }

@@ -36,3 +36,12 @@ ORDER BY date;
 
 -- name: ListActiveSpaceIDs :many
 SELECT id FROM spaces WHERE deleted_at IS NULL ORDER BY created_at, id;
+
+-- name: ListNetWorthContributions :many
+-- Money put into or taken out of the wallets from outside (adjustments, top ups, opening balances).
+-- Own-wallet transfers, trades and settlements are neutral for the net worth and are not listed.
+SELECT id, type, direction, amount, currency, occurred_at
+FROM transactions
+WHERE space_id = $1 AND type IN ('ADJUSTMENT', 'OPENING_BALANCE')
+  AND occurred_at >= $2 AND occurred_at <= $3
+ORDER BY occurred_at;

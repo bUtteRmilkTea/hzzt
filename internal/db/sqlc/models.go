@@ -24,6 +24,7 @@ type Category struct {
 	CreatedAt    time.Time           `json:"created_at"`
 	UpdatedAt    time.Time           `json:"updated_at"`
 	DeletedAt    *time.Time          `json:"deleted_at"`
+	SystemKey    *string             `json:"system_key"`
 }
 
 type FxRate struct {
@@ -285,6 +286,7 @@ type Transaction struct {
 	PositionAfter       []byte              `json:"position_after"`
 	ManualAssetID       uuid.NullUUID       `json:"manual_asset_id"`
 	SettlementDirection *string             `json:"settlement_direction"`
+	SystemKey           *string             `json:"system_key"`
 }
 
 type User struct {

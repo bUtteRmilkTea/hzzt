@@ -56,11 +56,14 @@ func (h *Handler) Mount(r chi.Router) {
 
 // CategoryDTO is the public representation of a category.
 type CategoryDTO struct {
-	ID             uuid.UUID        `json:"id"`
-	Type           string           `json:"type" enums:"EXPENSE,INCOME"`
-	Name           string           `json:"name"`
-	Icon           string           `json:"icon"`
-	Color          string           `json:"color"`
+	ID    uuid.UUID `json:"id"`
+	Type  string    `json:"type" enums:"EXPENSE,INCOME"`
+	Name  string    `json:"name"`
+	Icon  string    `json:"icon"`
+	Color string    `json:"color"`
+	// SystemKey is the stable key of a default category (SALARY, SUBSCRIPTIONS, ...) so the client can
+	// localize its name; null for categories the user created. A rename never changes it.
+	SystemKey      *string          `json:"systemKey"`
 	BudgetAmount   *decimal.Decimal `json:"budgetAmount" swaggertype:"string" example:"500000"`
 	BudgetCurrency *string          `json:"budgetCurrency" example:"IDR"` // the space's base currency when a budget is set
 	SortOrder      int              `json:"sortOrder"`
@@ -82,7 +85,7 @@ type StatsDTO struct {
 
 func toDTO(c sqlc.Category, baseCurrency string) CategoryDTO {
 	d := CategoryDTO{
-		ID: c.ID, Type: c.Type, Name: c.Name, Icon: c.Icon, Color: c.Color,
+		ID: c.ID, Type: c.Type, Name: c.Name, Icon: c.Icon, Color: c.Color, SystemKey: c.SystemKey,
 		SortOrder: int(c.SortOrder), CreatedAt: c.CreatedAt.UTC(),
 	}
 	if c.BudgetAmount.Valid {
@@ -312,6 +315,9 @@ func statsRange(r *http.Request, user sqlc.User, sp sqlc.Space, now time.Time) (
 	return rng, nil
 }
 
+// forceParam reads ?force=true, which skips the CATEGORY_EXISTS_SIMILAR check.
+func forceParam(r *http.Request) bool { return r.URL.Query().Get("force") == "true" }
+
 // create godoc
 //
 //	@Summary		Create a category
@@ -321,6 +327,7 @@ func statsRange(r *http.Request, user sqlc.User, sp sqlc.Space, now time.Time) (
 //	@Accept			json
 //	@Produce		json
 //	@Param			spaceId	path		string			true	"Space ID"
+//	@Param			force	query		bool			false	"true skips the CATEGORY_EXISTS_SIMILAR check"
 //	@Param			body	body		createRequest	true	"Category"
 //	@Success		201		{object}	CategoryDTO
 //	@Failure		400		{object}	httpx.ErrorEnvelope
@@ -337,7 +344,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f := map[string]any{}
-	in := CreateInput{Type: req.Type}
+	in := CreateInput{Type: req.Type, Force: forceParam(r)}
 	in.Name = *checkName(f, &req.Name)
 	in.Icon = *checkIcon(f, &req.Icon)
 	in.Color = *checkColor(f, &req.Color)
@@ -364,6 +371,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 //	@Produce		json
 //	@Param			spaceId	path		string			true	"Space ID"
 //	@Param			id		path		string			true	"Category ID"
+//	@Param			force	query		bool			false	"true skips the CATEGORY_EXISTS_SIMILAR check"
 //	@Param			body	body		updateRequest	true	"Fields to change"
 //	@Success		200		{object}	CategoryDTO
 //	@Failure		400		{object}	httpx.ErrorEnvelope
@@ -386,7 +394,7 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	f := map[string]any{}
 	in := UpdateInput{
 		Type: req.Type, Name: checkName(f, req.Name), Icon: checkIcon(f, req.Icon), Color: checkColor(f, req.Color),
-		BudgetSet: req.BudgetAmount.Set, Budget: checkBudget(f, req.BudgetAmount.Value),
+		BudgetSet: req.BudgetAmount.Set, Budget: checkBudget(f, req.BudgetAmount.Value), Force: forceParam(r),
 	}
 	if err := fieldsErr(f); err != nil {
 		httpx.WriteError(w, r, err)

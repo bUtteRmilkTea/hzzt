@@ -21,7 +21,10 @@ type historyBody struct {
 		NetWorth string `json:"netWorth"`
 		Live     bool   `json:"live"`
 	} `json:"points"`
-	ChangePct *string `json:"changePct"`
+	ChangePct        *string `json:"changePct"`
+	NetContributions string  `json:"netContributions"`
+	MarketChange     string  `json:"marketChange"`
+	PerformancePct   *string `json:"performancePct"`
 }
 
 func (s *TestServer) history(u session, sid, query string) historyBody {
@@ -250,4 +253,45 @@ func TestHistoryIsSpaceScoped(t *testing.T) {
 	url := "/api/v1/spaces/" + w.sid + "/net-worth/history"
 	assert.Equal(t, http.StatusUnauthorized, s.Get(url).Status)
 	expectCrossSpace404(t, s, outsider, http.MethodGet, url, nil)
+}
+
+// A deposit is not growth: a top up moves the value and the contributions, not the market change.
+func TestHistoryContributionsVersusMarketChange(t *testing.T) {
+	s := NewTestServer(t)
+	s.Clock.Set(time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC))
+	w := newWorld(t, s) // 1500 USD, opened on the 10th
+	s.seedSnapshot(w.sid, "2026-11-11", "USD", "1500")
+	s.Clock.Set(time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC))
+
+	t.Run("no deposit and no price move: all zero", func(t *testing.T) {
+		h := s.history(w.u, w.sid, "?range=1M")
+		assert.True(t, dec("0").Equal(dec(h.NetContributions)))
+		assert.True(t, dec("0").Equal(dec(h.MarketChange)))
+		require.NotNil(t, h.PerformancePct)
+		assert.True(t, dec("0").Equal(dec(*h.PerformancePct)))
+	})
+
+	t.Run("a top up is a contribution, the market change stays 0", func(t *testing.T) {
+		require.Equal(t, http.StatusCreated, s.Do(http.MethodPost, walURL(w.sid, "/", w.a.ID, "/top-up"), map[string]any{"amount": "500"}, bearer(w.u.AccessToken)).Status)
+		h := s.history(w.u, w.sid, "?range=1M")
+		require.NotNil(t, h.ChangePct)
+		assert.True(t, dec("33.33").Equal(dec(*h.ChangePct)), "the value grew by a third: %s", *h.ChangePct)
+		assert.True(t, dec("500").Equal(dec(h.NetContributions)), h.NetContributions)
+		assert.True(t, dec("0").Equal(dec(h.MarketChange)), h.MarketChange)
+		require.NotNil(t, h.PerformancePct)
+		assert.True(t, dec("0").Equal(dec(*h.PerformancePct)))
+	})
+
+	t.Run("a price move is market change, the contributions do not move", func(t *testing.T) {
+		s.seedSnapshot(w.sid, "2026-11-11", "USD", "2000") // baseline now includes the top up
+		_, err := s.Tx.Exec(context.Background(), `UPDATE transactions SET occurred_at = $2 WHERE space_id = $1 AND system_key = 'BALANCE_TOP_UP'`, w.sid, time.Date(2026, 11, 10, 18, 0, 0, 0, time.UTC))
+		require.NoError(t, err)
+		// the cash now sits at 2000; an extra balance edit is not a deposit either way: use a gain via an INCOME
+		w.must(map[string]any{"type": "INCOME", "walletId": w.a.ID, "amount": "100", "title": "Interest"})
+		h := s.history(w.u, w.sid, "?range=1M")
+		assert.True(t, dec("0").Equal(dec(h.NetContributions)), h.NetContributions)
+		assert.True(t, dec("100").Equal(dec(h.MarketChange)), h.MarketChange)
+		require.NotNil(t, h.PerformancePct)
+		assert.True(t, dec("5").Equal(dec(*h.PerformancePct)), *h.PerformancePct)
+	})
 }

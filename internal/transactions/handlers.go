@@ -79,9 +79,12 @@ type ManualAssetRef struct {
 
 // TransactionDTO is the public representation of a transaction.
 type TransactionDTO struct {
-	ID        uuid.UUID       `json:"id"`
-	Type      string          `json:"type" enums:"INCOME,EXPENSE,TRANSFER,ADJUSTMENT,OPENING_BALANCE"`
-	Direction *string         `json:"direction,omitempty" enums:"IN,OUT"`
+	ID        uuid.UUID `json:"id"`
+	Type      string    `json:"type" enums:"INCOME,EXPENSE,TRANSFER,ADJUSTMENT,OPENING_BALANCE"`
+	Direction *string   `json:"direction,omitempty" enums:"IN,OUT"`
+	// SystemKey is set on transactions the backend wrote itself, so the client can localize the
+	// title: OPENING_BALANCE, BALANCE_TOP_UP, BALANCE_ADJUSTMENT. Null for user transactions.
+	SystemKey *string         `json:"systemKey" enums:"OPENING_BALANCE,BALANCE_TOP_UP,BALANCE_ADJUSTMENT"`
 	Title     *string         `json:"title"`
 	Note      *string         `json:"note"`
 	Amount    decimal.Decimal `json:"amount" swaggertype:"string" example:"50000"`
@@ -121,7 +124,7 @@ func ref(id uuid.NullUUID, name, icon, color *string) *Ref {
 // ToDTO converts a transaction with its references.
 func ToDTO(d Detail) TransactionDTO {
 	t := TransactionDTO{
-		ID: d.ID, Type: d.Type, Direction: d.Direction, Title: d.Title, Note: d.Note,
+		ID: d.ID, Type: d.Type, Direction: d.Direction, SystemKey: d.SystemKey, Title: d.Title, Note: d.Note,
 		Amount: d.Amount, Currency: strings.TrimSpace(d.Currency),
 		Wallet:     ref(d.WalletID, d.WalletName, d.WalletIcon, nil),
 		Category:   ref(d.CategoryID, d.CategoryName, d.CategoryIcon, d.CategoryColor),
@@ -224,7 +227,7 @@ func (o *optional[T]) UnmarshalJSON(b []byte) error {
 }
 
 type updateRequest struct {
-	Type       *string             `json:"type" validate:"omitempty,oneof=INCOME EXPENSE"`
+	Type       *string             `json:"type" validate:"omitempty,oneof=INCOME EXPENSE ADJUSTMENT TRANSFER OPENING_BALANCE"`
 	WalletID   *uuid.UUID          `json:"walletId"`
 	Amount     *decimal.Decimal    `json:"amount" swaggertype:"string"`
 	CategoryID optional[uuid.UUID] `json:"categoryId" swaggertype:"string"`
@@ -394,7 +397,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 
 // topUp godoc
 //
-//	@Summary	Top up a wallet (an INCOME titled "Balance top up", no category)
+//	@Summary	Top up a wallet (an ADJUSTMENT IN titled "Balance top up", no category, never income)
 //	@Tags		transactions
 //	@Security	BearerAuth
 //	@Accept		json
@@ -460,7 +463,7 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 // update godoc
 //
 //	@Summary		Edit a transaction
-//	@Description	INCOME/EXPENSE: any field (the old balance effect is reversed and the new one applied atomically). ADJUSTMENT/OPENING_BALANCE: only `note`. Transfers and investment/asset transactions use their own endpoints (USE_SPECIFIC_ENDPOINT). `categoryId`, `title` and `note` accept null to clear.
+//	@Description	INCOME/EXPENSE: any field (the old balance effect is reversed and the new one applied atomically). ADJUSTMENT/OPENING_BALANCE: only `note`. `type: ADJUSTMENT` on an uncategorised INCOME/EXPENSE reclassifies it explicitly as a balance adjustment (IN for income, OUT for expense; the wallet balance does not change); a categorised one, or any other type change, returns TYPE_CHANGE_NOT_ALLOWED. Transfers and investment/asset transactions use their own endpoints (USE_SPECIFIC_ENDPOINT). `categoryId`, `title` and `note` accept null to clear.
 //	@Tags			transactions
 //	@Security		BearerAuth
 //	@Accept			json
@@ -471,7 +474,7 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 //	@Success		200		{object}	TransactionDTO
 //	@Failure		400		{object}	httpx.ErrorEnvelope
 //	@Failure		404		{object}	httpx.ErrorEnvelope
-//	@Failure		422		{object}	httpx.ErrorEnvelope	"CATEGORY_TYPE_MISMATCH / USE_SPECIFIC_ENDPOINT"
+//	@Failure		422		{object}	httpx.ErrorEnvelope	"CATEGORY_TYPE_MISMATCH / USE_SPECIFIC_ENDPOINT / TYPE_CHANGE_NOT_ALLOWED"
 //	@Router			/spaces/{spaceId}/transactions/{id} [patch]
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	id, err := txnID(r)

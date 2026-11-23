@@ -12,8 +12,8 @@ SELECT COALESCE(max(sort_order) + 1, 0)::int FROM categories
 WHERE space_id = $1 AND type = $2 AND deleted_at IS NULL;
 
 -- name: CreateCategory :one
-INSERT INTO categories (space_id, type, name, icon, color, budget_amount, sort_order, created_by_id)
-VALUES ($1, $2, $3, $4, $5, sqlc.narg('budget_amount'), $6, $7)
+INSERT INTO categories (space_id, type, name, icon, color, budget_amount, sort_order, created_by_id, system_key)
+VALUES ($1, $2, $3, $4, $5, sqlc.narg('budget_amount'), $6, $7, sqlc.narg('system_key'))
 RETURNING *;
 
 -- name: UpdateCategory :one

@@ -22,6 +22,7 @@ type categoryBody struct {
 	BudgetAmount   *string `json:"budgetAmount"`
 	BudgetCurrency *string `json:"budgetCurrency"`
 	SortOrder      int     `json:"sortOrder"`
+	SystemKey      *string `json:"systemKey"`
 }
 
 func catURL(sid string, rest ...string) string {

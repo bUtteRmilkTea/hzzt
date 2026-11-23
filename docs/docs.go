@@ -1640,6 +1640,12 @@ const docTemplate = `{
                         "required": true
                     },
                     {
+                        "type": "boolean",
+                        "description": "true skips the CATEGORY_EXISTS_SIMILAR check",
+                        "name": "force",
+                        "in": "query"
+                    },
+                    {
                         "description": "Category",
                         "name": "body",
                         "in": "body",
@@ -1813,6 +1819,12 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "true skips the CATEGORY_EXISTS_SIMILAR check",
+                        "name": "force",
+                        "in": "query"
                     },
                     {
                         "description": "Fields to change",
@@ -4442,7 +4454,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "INCOME/EXPENSE: any field (the old balance effect is reversed and the new one applied atomically). ADJUSTMENT/OPENING_BALANCE: only ` + "`" + `note` + "`" + `. Transfers and investment/asset transactions use their own endpoints (USE_SPECIFIC_ENDPOINT). ` + "`" + `categoryId` + "`" + `, ` + "`" + `title` + "`" + ` and ` + "`" + `note` + "`" + ` accept null to clear.",
+                "description": "INCOME/EXPENSE: any field (the old balance effect is reversed and the new one applied atomically). ADJUSTMENT/OPENING_BALANCE: only ` + "`" + `note` + "`" + `. ` + "`" + `type: ADJUSTMENT` + "`" + ` on an uncategorised INCOME/EXPENSE reclassifies it explicitly as a balance adjustment (IN for income, OUT for expense; the wallet balance does not change); a categorised one, or any other type change, returns TYPE_CHANGE_NOT_ALLOWED. Transfers and investment/asset transactions use their own endpoints (USE_SPECIFIC_ENDPOINT). ` + "`" + `categoryId` + "`" + `, ` + "`" + `title` + "`" + ` and ` + "`" + `note` + "`" + ` accept null to clear.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4498,7 +4510,7 @@ const docTemplate = `{
                         }
                     },
                     "422": {
-                        "description": "CATEGORY_TYPE_MISMATCH / USE_SPECIFIC_ENDPOINT",
+                        "description": "CATEGORY_TYPE_MISMATCH / USE_SPECIFIC_ENDPOINT / TYPE_CHANGE_NOT_ALLOWED",
                         "schema": {
                             "$ref": "#/definitions/httpx.ErrorEnvelope"
                         }
@@ -5174,7 +5186,7 @@ const docTemplate = `{
                 "tags": [
                     "transactions"
                 ],
-                "summary": "Top up a wallet (an INCOME titled \"Balance top up\", no category)",
+                "summary": "Top up a wallet (an ADJUSTMENT IN titled \"Balance top up\", no category, never income)",
                 "parameters": [
                     {
                         "type": "string",
@@ -5456,6 +5468,10 @@ const docTemplate = `{
                             "$ref": "#/definitions/categories.StatsDTO"
                         }
                     ]
+                },
+                "systemKey": {
+                    "description": "SystemKey is the stable key of a default category (SALARY, SUBSCRIPTIONS, ...) so the client can\nlocalize its name; null for categories the user created. A rename never changes it.",
+                    "type": "string"
                 },
                 "type": {
                     "type": "string",
@@ -7587,6 +7603,18 @@ const docTemplate = `{
                     "description": "InvestmentsChangePct is the same change for the portfolio value.",
                     "type": "string"
                 },
+                "marketChange": {
+                    "description": "MarketChange is (last - first) - netContributions.",
+                    "type": "string"
+                },
+                "netContributions": {
+                    "description": "NetContributions is the money put in or taken out from outside (top ups, adjustments, opening\nbalances) between the first and the last point, in the base currency, converted with each\nday's rate. A deposit is not growth: use marketChange / performancePct for the real return.",
+                    "type": "string"
+                },
+                "performancePct": {
+                    "description": "PerformancePct is marketChange / (first + netContributions), a percentage; null when that base is not positive.",
+                    "type": "string"
+                },
                 "points": {
                     "type": "array",
                     "items": {
@@ -7602,6 +7630,12 @@ const docTemplate = `{
                         "1Y",
                         "ALL"
                     ]
+                },
+                "warnings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/currency.Warning"
+                    }
                 }
             }
         },
@@ -8059,6 +8093,15 @@ const docTemplate = `{
                 "realizedPl": {
                     "type": "string"
                 },
+                "systemKey": {
+                    "description": "SystemKey is set on transactions the backend wrote itself, so the client can localize the\ntitle: OPENING_BALANCE, BALANCE_TOP_UP, BALANCE_ADJUSTMENT. Null for user transactions.",
+                    "type": "string",
+                    "enum": [
+                        "OPENING_BALANCE",
+                        "BALANCE_TOP_UP",
+                        "BALANCE_ADJUSTMENT"
+                    ]
+                },
                 "title": {
                     "type": "string"
                 },
@@ -8168,7 +8211,10 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "INCOME",
-                        "EXPENSE"
+                        "EXPENSE",
+                        "ADJUSTMENT",
+                        "TRANSFER",
+                        "OPENING_BALANCE"
                     ]
                 },
                 "walletId": {

@@ -13,9 +13,9 @@ import (
 )
 
 const createCategory = `-- name: CreateCategory :one
-INSERT INTO categories (space_id, type, name, icon, color, budget_amount, sort_order, created_by_id)
-VALUES ($1, $2, $3, $4, $5, $8, $6, $7)
-RETURNING id, space_id, type, name, icon, color, budget_amount, sort_order, created_by_id, created_at, updated_at, deleted_at
+INSERT INTO categories (space_id, type, name, icon, color, budget_amount, sort_order, created_by_id, system_key)
+VALUES ($1, $2, $3, $4, $5, $8, $6, $7, $9)
+RETURNING id, space_id, type, name, icon, color, budget_amount, sort_order, created_by_id, created_at, updated_at, deleted_at, system_key
 `
 
 type CreateCategoryParams struct {
@@ -27,6 +27,7 @@ type CreateCategoryParams struct {
 	SortOrder    int32               `json:"sort_order"`
 	CreatedByID  uuid.UUID           `json:"created_by_id"`
 	BudgetAmount decimal.NullDecimal `json:"budget_amount"`
+	SystemKey    *string             `json:"system_key"`
 }
 
 func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) (Category, error) {
@@ -39,6 +40,7 @@ func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) 
 		arg.SortOrder,
 		arg.CreatedByID,
 		arg.BudgetAmount,
+		arg.SystemKey,
 	)
 	var i Category
 	err := row.Scan(
@@ -54,12 +56,13 @@ func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.SystemKey,
 	)
 	return i, err
 }
 
 const getCategory = `-- name: GetCategory :one
-SELECT id, space_id, type, name, icon, color, budget_amount, sort_order, created_by_id, created_at, updated_at, deleted_at FROM categories WHERE id = $1 AND space_id = $2 AND deleted_at IS NULL
+SELECT id, space_id, type, name, icon, color, budget_amount, sort_order, created_by_id, created_at, updated_at, deleted_at, system_key FROM categories WHERE id = $1 AND space_id = $2 AND deleted_at IS NULL
 `
 
 type GetCategoryParams struct {
@@ -83,12 +86,13 @@ func (q *Queries) GetCategory(ctx context.Context, arg GetCategoryParams) (Categ
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.SystemKey,
 	)
 	return i, err
 }
 
 const listCategories = `-- name: ListCategories :many
-SELECT id, space_id, type, name, icon, color, budget_amount, sort_order, created_by_id, created_at, updated_at, deleted_at FROM categories
+SELECT id, space_id, type, name, icon, color, budget_amount, sort_order, created_by_id, created_at, updated_at, deleted_at, system_key FROM categories
 WHERE space_id = $1 AND deleted_at IS NULL
   AND ($2::text IS NULL OR type = $2::text)
 ORDER BY type, sort_order, created_at, id
@@ -121,6 +125,7 @@ func (q *Queries) ListCategories(ctx context.Context, arg ListCategoriesParams) 
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.SystemKey,
 		); err != nil {
 			return nil, err
 		}
@@ -223,7 +228,7 @@ UPDATE categories SET
     budget_amount = CASE WHEN $7::bool THEN $8 ELSE budget_amount END,
     updated_at    = now()
 WHERE id = $1 AND space_id = $2 AND deleted_at IS NULL
-RETURNING id, space_id, type, name, icon, color, budget_amount, sort_order, created_by_id, created_at, updated_at, deleted_at
+RETURNING id, space_id, type, name, icon, color, budget_amount, sort_order, created_by_id, created_at, updated_at, deleted_at, system_key
 `
 
 type UpdateCategoryParams struct {
@@ -262,6 +267,7 @@ func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.SystemKey,
 	)
 	return i, err
 }

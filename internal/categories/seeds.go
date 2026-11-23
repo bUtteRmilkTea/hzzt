@@ -11,21 +11,21 @@ import (
 	"github.com/JonathanRainee/hzzt/internal/spaces"
 )
 
-type seed struct{ typ, name, icon, color string }
+type seed struct{ typ, name, icon, color, key string }
 
 // DefaultSeeds are created in every new space (7 expense, 4 income).
 var DefaultSeeds = []seed{
-	{TypeExpense, "Transport", "🚗", "#3B82F6"},
-	{TypeExpense, "Shopping", "🛍️", "#EC4899"},
-	{TypeExpense, "Subscriptions", "✨", "#8B5CF6"},
-	{TypeExpense, "Health", "💊", "#EF4444"},
-	{TypeExpense, "Gifts", "🎁", "#F59E0B"},
-	{TypeExpense, "Snacks", "🍿", "#F97316"},
-	{TypeExpense, "Family", "👨‍👩‍👧", "#14B8A6"},
-	{TypeIncome, "Salary", "💰", "#22C55E"},
-	{TypeIncome, "Freelance", "💼", "#0EA5E9"},
-	{TypeIncome, "Investment", "📈", "#6366F1"},
-	{TypeIncome, "Dividend", "📈", "#84CC16"},
+	{TypeExpense, "Transport", "🚗", "#3B82F6", "TRANSPORT"},
+	{TypeExpense, "Shopping", "🛍️", "#EC4899", "SHOPPING"},
+	{TypeExpense, "Subscriptions", "🔁", "#8B5CF6", "SUBSCRIPTIONS"},
+	{TypeExpense, "Health", "💊", "#EF4444", "HEALTH"},
+	{TypeExpense, "Gifts", "🎁", "#F59E0B", "GIFTS"},
+	{TypeExpense, "Snacks", "🍿", "#F97316", "SNACKS"},
+	{TypeExpense, "Family", "👨‍👩‍👧", "#14B8A6", "FAMILY"},
+	{TypeIncome, "Salary", "💰", "#22C55E", "SALARY"},
+	{TypeIncome, "Freelance", "💼", "#0EA5E9", "FREELANCE"},
+	{TypeIncome, "Investment", "📈", "#6366F1", "INVESTMENT"},
+	{TypeIncome, "Dividend", "🏦", "#84CC16", "DIVIDEND"},
 }
 
 // Suggestions are the static name suggestions offered when creating a category.
@@ -41,9 +41,10 @@ func (s *Service) Subscribe(bus *events.Bus) {
 			q := s.q.WithTx(tx)
 			order := map[string]int32{}
 			for _, sd := range DefaultSeeds {
+				sd := sd
 				if _, err := q.CreateCategory(ctx, sqlc.CreateCategoryParams{
 					SpaceID: e.SpaceID, Type: sd.typ, Name: sd.name, Icon: sd.icon, Color: sd.color,
-					SortOrder: order[sd.typ], CreatedByID: e.UserID,
+					SortOrder: order[sd.typ], CreatedByID: e.UserID, SystemKey: &sd.key,
 				}); err != nil {
 					return err
 				}

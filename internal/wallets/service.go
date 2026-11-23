@@ -209,7 +209,7 @@ func (s *Service) Create(ctx context.Context, space sqlc.Space, userID uuid.UUID
 			return fmt.Errorf("create wallet: %w", err)
 		}
 		if !in.InitialBalance.IsZero() {
-			if err := s.writeBalanceTx(ctx, tx, w, userID, ledger.TypeOpeningBalance, "Opening balance", nil, in.InitialBalance); err != nil {
+			if err := s.writeBalanceTx(ctx, tx, w, userID, ledger.TypeOpeningBalance, "Opening balance", "OPENING_BALANCE", nil, in.InitialBalance); err != nil {
 				return err
 			}
 		}
@@ -224,7 +224,7 @@ func (s *Service) Create(ctx context.Context, space sqlc.Space, userID uuid.UUID
 
 // writeBalanceTx records a signed balance change as an OPENING_BALANCE or ADJUSTMENT
 // transaction and applies it through the ledger, inside the caller's tx.
-func (s *Service) writeBalanceTx(ctx context.Context, tx pgx.Tx, w sqlc.Wallet, userID uuid.UUID, typ, title string, note *string, signed decimal.Decimal) error {
+func (s *Service) writeBalanceTx(ctx context.Context, tx pgx.Tx, w sqlc.Wallet, userID uuid.UUID, typ, title, systemKey string, note *string, signed decimal.Decimal) error {
 	dir := ledger.DirectionIn
 	if signed.IsNegative() {
 		dir = ledger.DirectionOut
@@ -232,7 +232,7 @@ func (s *Service) writeBalanceTx(ctx context.Context, tx pgx.Tx, w sqlc.Wallet, 
 	t, err := sqlc.New(tx).CreateTransaction(ctx, sqlc.CreateTransactionParams{
 		SpaceID: w.SpaceID, Type: typ, Direction: &dir, Title: &title, Note: note,
 		Amount: signed.Abs(), Currency: w.Currency, WalletID: uuid.NullUUID{UUID: w.ID, Valid: true},
-		OccurredAt: s.now().UTC(), CreatedByID: userID,
+		OccurredAt: s.now().UTC(), CreatedByID: userID, SystemKey: &systemKey,
 	})
 	if err != nil {
 		return fmt.Errorf("create %s transaction: %w", typ, err)
@@ -304,7 +304,7 @@ func (s *Service) SetBalance(ctx context.Context, spaceID, id, userID uuid.UUID,
 		if delta.IsZero() {
 			return nil
 		}
-		if err := s.writeBalanceTx(ctx, tx, w, userID, ledger.TypeAdjustment, "Balance adjustment", note, delta); err != nil {
+		if err := s.writeBalanceTx(ctx, tx, w, userID, ledger.TypeAdjustment, "Balance adjustment", "BALANCE_ADJUSTMENT", note, delta); err != nil {
 			return err
 		}
 		out, err = q.GetWallet(ctx, sqlc.GetWalletParams{ID: id, SpaceID: spaceID})

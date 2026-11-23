@@ -113,6 +113,15 @@ type HistoryDTO struct {
 	ChangePct *money.Pct `json:"changePct" swaggertype:"string"` // first → last point, a percentage; null when it cannot be computed
 	// InvestmentsChangePct is the same change for the portfolio value.
 	InvestmentsChangePct *money.Pct `json:"investmentsChangePct" swaggertype:"string"`
+	// NetContributions is the money put in or taken out from outside (top ups, adjustments, opening
+	// balances) between the first and the last point, in the base currency, converted with each
+	// day's rate. A deposit is not growth: use marketChange / performancePct for the real return.
+	NetContributions money.Amount `json:"netContributions" swaggertype:"string"`
+	// MarketChange is (last - first) - netContributions.
+	MarketChange money.Amount `json:"marketChange" swaggertype:"string"`
+	// PerformancePct is marketChange / (first + netContributions), a percentage; null when that base is not positive.
+	PerformancePct *money.Pct         `json:"performancePct" swaggertype:"string"`
+	Warnings       []currency.Warning `json:"warnings"`
 }
 
 // history godoc
@@ -138,7 +147,7 @@ func (h *Handler) history(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, err)
 		return
 	}
-	out := HistoryDTO{Currency: res.Currency, Range: res.Range, ChangePct: money.PctPtr(res.ChangePct), InvestmentsChangePct: money.PctPtr(res.InvestmentsChangePct), Points: make([]PointDTO, 0, len(res.Points))}
+	out := HistoryDTO{Currency: res.Currency, Range: res.Range, ChangePct: money.PctPtr(res.ChangePct), InvestmentsChangePct: money.PctPtr(res.InvestmentsChangePct), NetContributions: money.NewAmount(res.NetContributions, res.Currency), MarketChange: money.NewAmount(res.MarketChange, res.Currency), PerformancePct: money.PctPtr(res.PerformancePct), Warnings: res.Warnings, Points: make([]PointDTO, 0, len(res.Points))}
 	for _, p := range res.Points {
 		out.Points = append(out.Points, PointDTO{Date: p.Date, NetWorth: money.NewAmount(p.NetWorth, res.Currency), Investments: money.NewAmount(p.Investments, res.Currency), Live: p.Live})
 	}

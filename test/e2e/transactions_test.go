@@ -29,6 +29,7 @@ type txnBody struct {
 	ID         string  `json:"id"`
 	Type       string  `json:"type"`
 	Direction  *string `json:"direction"`
+	SystemKey  *string `json:"systemKey"`
 	Title      *string `json:"title"`
 	Note       *string `json:"note"`
 	Amount     string  `json:"amount"`
@@ -291,7 +292,11 @@ func TestTopUp(t *testing.T) {
 	require.Equal(t, http.StatusCreated, res.Status, string(res.Body))
 	var got txnBody
 	res.JSON(t, &got)
-	assert.Equal(t, "INCOME", got.Type)
+	assert.Equal(t, "ADJUSTMENT", got.Type, "a top up is not income")
+	require.NotNil(t, got.Direction)
+	assert.Equal(t, "IN", *got.Direction)
+	require.NotNil(t, got.SystemKey)
+	assert.Equal(t, "BALANCE_TOP_UP", *got.SystemKey)
 	require.NotNil(t, got.Title)
 	assert.Equal(t, "Balance top up", *got.Title)
 	assert.Nil(t, got.Category)
@@ -375,7 +380,7 @@ func TestEditAndDelete(t *testing.T) {
 	t.Run("validation and not-found", func(t *testing.T) {
 		e := w.must(exp(w.a, "5", ""))
 		for name, body := range map[string]map[string]any{
-			"zero amount": {"amount": "0"}, "bad type": {"type": "TRANSFER"}, "bad wallet": {"walletId": "x"},
+			"zero amount": {"amount": "0"}, "bad type": {"type": "NOPE"}, "bad wallet": {"walletId": "x"},
 			"long note": {"note": strings.Repeat("n", 1001)}, "unknown": {"direction": "IN"},
 		} {
 			assert.Equal(t, http.StatusBadRequest, patch(e.ID, body).Status, name)
@@ -403,9 +408,11 @@ func TestEditAndDelete(t *testing.T) {
 		assert.Equal(t, "IN", *got.Direction)
 
 		balance := w.balance(w.b)
-		for _, body := range []map[string]any{{"amount": "1"}, {"walletId": w.a.ID}, {"note": "x", "title": "y"}, {"type": "EXPENSE"}} {
+		for _, body := range []map[string]any{{"amount": "1"}, {"walletId": w.a.ID}, {"note": "x", "title": "y"}} {
 			assert.Equal(t, http.StatusBadRequest, patch(openingID, body).Status, "%v", body)
 		}
+		// a change of kind is TYPE_CHANGE_NOT_ALLOWED, not a validation error (Phase F)
+		assert.Equal(t, http.StatusUnprocessableEntity, patch(openingID, map[string]any{"type": "EXPENSE"}).Status)
 		assert.True(t, balance.Equal(w.balance(w.b)))
 	})
 

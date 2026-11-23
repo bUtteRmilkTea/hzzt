@@ -54,7 +54,7 @@ func (s *TestServer) grouped(u session, sid, query string) groupedBody {
 
 func crypto(name, exchange, qty, price string) map[string]any {
 	return map[string]any{"assetType": "CRYPTO", "name": name, "symbol": strings.ToUpper(name[:3]), "quantity": qty,
-		"avgBuyPrice": price, "manualPrice": price, "details": map[string]any{"exchangeOrWallet": exchange}}
+		"avgBuyPrice": price, "manualPrice": price, "priceMode": "MANUAL", "details": map[string]any{"exchangeOrWallet": exchange}}
 }
 
 func TestInvestmentWrapperColumn(t *testing.T) {

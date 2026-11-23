@@ -42,6 +42,8 @@ type Market interface {
 	EnsurePrice(ctx context.Context, instrumentID uuid.UUID)
 	// RefreshPrice fetches one instrument's price now.
 	RefreshPrice(ctx context.Context, instrumentID uuid.UUID) error
+	// SymbolAmbiguous reports whether a symbol does not clearly name one instrument.
+	SymbolAmbiguous(ctx context.Context, assetType, symbol string) (bool, error)
 }
 
 // Service holds investment logic.
@@ -325,7 +327,16 @@ func (s *Service) Create(ctx context.Context, spaceID, userID uuid.UUID, spec Sp
 	if err != nil {
 		return Item{}, err
 	}
+	var notices []currency.Warning
 	instrument, err := s.linkInstrument(ctx, spec, nil, spec.InstrumentID != nil)
+	if ae, ok := apperror.As(err); ok && ae.Code == CodeInstrumentNotFound && spec.AutoDefault {
+		// The server chose AUTO and the coin cannot be linked: keep the holding, priced by hand.
+		spec.PriceMode, instrument, err = PriceModeManual, uuid.NullUUID{}, nil
+		notices = append(notices, currency.Warning{
+			Code: CodePriceNotLinked, Label: spec.Name,
+			Message: "No unique market instrument matches this symbol: the manual price is used. Pick the coin from the search to price it automatically.",
+		})
+	}
 	if err != nil {
 		return Item{}, err
 	}
@@ -363,7 +374,12 @@ func (s *Service) Create(ctx context.Context, spaceID, userID uuid.UUID, spec Sp
 		}
 	}
 	s.firstPrice(ctx, inv)
-	return s.item(ctx, inv, userID)
+	it, err := s.item(ctx, inv, userID)
+	if err != nil {
+		return Item{}, err
+	}
+	it.Valuation.Warnings = append(it.Valuation.Warnings, notices...)
+	return it, nil
 }
 
 // fundInitialPosition records the BUY that paid for a new investment's initial
@@ -459,6 +475,13 @@ func (s *Service) linkInstrument(ctx context.Context, spec Spec, cur *sqlc.Inves
 		sym := ""
 		if spec.Symbol != nil {
 			sym = *spec.Symbol
+		}
+		if spec.AutoDefault {
+			if amb, err := s.market.SymbolAmbiguous(ctx, spec.AssetType, sym); err != nil {
+				return uuid.NullUUID{}, err
+			} else if amb {
+				return uuid.NullUUID{}, apperror.Unprocessable(CodeInstrumentNotFound, "The symbol "+sym+" matches several instruments")
+			}
 		}
 		id, err := s.market.ResolveInstrument(ctx, spec.AssetType, nil, sym)
 		return uuid.NullUUID{UUID: id, Valid: err == nil}, err

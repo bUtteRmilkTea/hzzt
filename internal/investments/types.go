@@ -41,7 +41,14 @@ const (
 	CodeAutoPriceNotSupported = "AUTO_PRICE_NOT_SUPPORTED"
 	CodeInvestmentNotFound    = "INVESTMENT_NOT_FOUND"
 	CodePriceModeNotAuto      = "PRICE_MODE_NOT_AUTO"
-	CodeInstrumentNotLinked   = "INSTRUMENT_NOT_LINKED"
+
+	// Warning codes of a valuation (not errors).
+	CodeInstrumentNotFound = "INSTRUMENT_NOT_FOUND" // same value as marketdata.CodeInstrumentNotFound
+	CodePriceNotLinked     = "PRICE_NOT_LINKED"
+	CodePriceStale         = "PRICE_STALE"
+	CodeManualValueOver    = "MANUAL_VALUE_OVERRIDES_MARKET"
+
+	CodeInstrumentNotLinked = "INSTRUMENT_NOT_LINKED"
 )
 
 var (
@@ -141,6 +148,9 @@ var Metas = []TypeMeta{
 func init() {
 	for i := range Metas {
 		Metas[i].Defaults = TypeDefaults{PriceMode: PriceModeManual, EstimatedAnnualChangePct: DefaultEstimatedAnnualChangePct, Fees: "0"}
+		if Metas[i].AssetType == TypeCrypto { // D-B4: priced by the market unless the client says otherwise
+			Metas[i].Defaults.PriceMode = PriceModeAuto
+		}
 	}
 }
 

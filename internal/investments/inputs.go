@@ -42,6 +42,10 @@ type Spec struct {
 	InstrumentID *uuid.UUID
 	// Funding, when set, pays for the initial position from a wallet (a BUY).
 	Funding *Funding
+	// AutoDefault marks a price mode the server chose (a CRYPTO created without priceMode is AUTO):
+	// if its coin cannot be linked, Create falls back to MANUAL with a PRICE_NOT_LINKED warning
+	// instead of failing. An explicit priceMode from the client never falls back.
+	AutoDefault bool
 }
 
 // Funding asks for the initial position to be paid from a wallet. The wallet is
@@ -428,6 +432,8 @@ func buildSpec(assetType, name string, b *base, quantity *decimal.Decimal, detai
 			f["priceMode"] = "must be one of: AUTO MANUAL"
 		}
 		s.PriceMode = *b.PriceMode
+	} else if meta.Defaults.PriceMode == PriceModeAuto {
+		s.PriceMode, s.AutoDefault = PriceModeAuto, true // D-B4: crypto is priced by the market unless told otherwise
 	}
 	if b.EstimatedAnnualChangePct != nil {
 		s.EstimatedAnnualChangePct = *b.EstimatedAnnualChangePct

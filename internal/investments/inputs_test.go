@@ -187,7 +187,11 @@ func TestMetasMirrorTheInputs(t *testing.T) {
 		assert.True(t, ok, m.AssetType)
 		assert.NotNil(t, newDetails(m.AssetType), m.AssetType)
 		assert.NotEmpty(t, m.DetailFields)
-		assert.Equal(t, PriceModeManual, m.Defaults.PriceMode)
+		if m.AssetType == TypeCrypto { // D-B4: crypto is priced by the market unless told otherwise
+			assert.Equal(t, PriceModeAuto, m.Defaults.PriceMode)
+		} else {
+			assert.Equal(t, PriceModeManual, m.Defaults.PriceMode)
+		}
 		assert.Equal(t, "5.5", m.Defaults.EstimatedAnnualChangePct)
 		// auto pricing is only advertised where creating AUTO works
 		_, err := buildSpec(m.AssetType, "n", &base{PriceMode: strp("AUTO"), Symbol: strp("S")}, dp("1"), validDetails(m.AssetType), "IDR")
@@ -333,4 +337,20 @@ func TestPatch(t *testing.T) {
 			assert.Equal(t, apperror.CodeValidationFailed, codeOf(t, err), name)
 		}
 	})
+}
+
+func TestCryptoWithoutPriceModeDefaultsToAuto(t *testing.T) {
+	spec, err := buildSpec(TypeCrypto, "Bitcoin", &base{Symbol: strp("BTC")}, dp("1"), validDetails(TypeCrypto), "IDR")
+	require.NoError(t, err)
+	assert.Equal(t, PriceModeAuto, spec.PriceMode)
+	assert.True(t, spec.AutoDefault)
+
+	spec, err = buildSpec(TypeCrypto, "Bitcoin", &base{Symbol: strp("BTC"), PriceMode: strp("MANUAL")}, dp("1"), validDetails(TypeCrypto), "IDR")
+	require.NoError(t, err)
+	assert.Equal(t, PriceModeManual, spec.PriceMode)
+	assert.False(t, spec.AutoDefault)
+
+	spec, err = buildSpec(TypeUSStock, "Apple", &base{Symbol: strp("AAPL")}, dp("1"), validDetails(TypeUSStock), "IDR")
+	require.NoError(t, err)
+	assert.Equal(t, PriceModeManual, spec.PriceMode, "other types stay manual by default")
 }

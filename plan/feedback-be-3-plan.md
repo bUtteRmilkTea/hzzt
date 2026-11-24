@@ -185,7 +185,7 @@ Create and patch without the fields; create and patch **with** the old fields st
 
 **Progress** (ticked when the phase's branch passes lint/tests and is pushed with a PR):
 - [x] Phase L: refresh 15 minutes, symbol check, grouped wrapper PnL
-- [ ] Phase P: remove expected yearly change and staked quantity
+- [x] Phase P: remove expected yearly change and staked quantity
 - [ ] Phase M: one exchange or broker field
 - [ ] Phase N: trade history per investment, delete with replay
 - [ ] Phase O: manual asset value change revert
@@ -258,3 +258,7 @@ Dry run on `development` at b7d39f1 (= origin/development, no unmerged branches)
 - **P (strip-key migration):** stored details are read leniently (`parseStoredDetails`, plain `json.Unmarshal`), and a PATCH rebuilds the typed details from the stored row (`specFromRow`), so unknown stored keys are dropped and never re-validated. The strip migration is tidy-up, not required for reads or patches. Only the request path (`decodeDetails`) is strict. Dev data: 0 rows with `stakedQuantity`; 13 investments and 0 manual assets have an estimated change value.
 - **M (data):** dev data has 5 investments with one of `exchangeOrWallet`, `platform`, `broker` in details, 8 investments with an empty wrapper, and 1 mutual fund.
 - **D-B10 already in place:** `WrapperGroupDTO` embeds `TotalsDTO` (`value`, `cost`, `unrealizedPl`, `unrealizedPlPct`) and `Group` computes them with decimal sums, so L-T5 is a test only. The field is named `cost`, not `costBasis`.
+
+## 13. Phase P implementation note (Nov 24, 2026)
+
+Phase P done on `feat/drop-estimated-change-staked` (P-T1 to P-T8 all done; branched from the Phase L branch only because that branch carries this plan file). The real migration numbers are 00021 (drop `estimated_annual_change_pct` on both tables, prints counts) and 00022 (strip `stakedQuantity`, prints the list). Dev data counts before the migration: 13 investments and 0 manual assets with an estimated change, 0 investments with `stakedQuantity`. Both migrations ran up, down, up on a scratch copy of the dev database. Old request fields are accepted and ignored (`estimatedAnnualChangePct` on investments and manual assets, `details.stakedQuantity` on crypto) with a warning log line, never stored or returned. `Position.Sell` lost its `staked` argument. A source scan test (`TestRemovedFieldsDoNotComeBack`) fails if the identifiers return outside the tolerant fields. Appendix B of `plan/plan.md` was adjusted.

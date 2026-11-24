@@ -16,36 +16,35 @@ import (
 const createInvestment = `-- name: CreateInvestment :one
 INSERT INTO investments (
     space_id, asset_type, price_mode, name, symbol, icon, quote_currency, quantity, avg_buy_price,
-    manual_price, fees, manual_current_value, purchase_date, estimated_annual_change_pct,
+    manual_price, fees, manual_current_value, purchase_date,
     manual_fx_rate, details, created_by_id, instrument_id, wrapper
 ) VALUES (
     $1, $2, $3, $4, $13, $5, $6, $7, $8,
-    $9, $10, $14, $15, $16,
-    $17, $11, $12, $18, $19
+    $9, $10, $14, $15,
+    $16, $11, $12, $17, $18
 )
-RETURNING id, space_id, asset_type, price_mode, name, symbol, icon, quote_currency, quantity, avg_buy_price, manual_price, fees, manual_current_value, purchase_date, estimated_annual_change_pct, manual_fx_rate, details, instrument_id, is_shared, created_by_id, created_at, updated_at, deleted_at, wrapper
+RETURNING id, space_id, asset_type, price_mode, name, symbol, icon, quote_currency, quantity, avg_buy_price, manual_price, fees, manual_current_value, purchase_date, manual_fx_rate, details, instrument_id, is_shared, created_by_id, created_at, updated_at, deleted_at, wrapper
 `
 
 type CreateInvestmentParams struct {
-	SpaceID                  uuid.UUID           `json:"space_id"`
-	AssetType                string              `json:"asset_type"`
-	PriceMode                string              `json:"price_mode"`
-	Name                     string              `json:"name"`
-	Icon                     string              `json:"icon"`
-	QuoteCurrency            string              `json:"quote_currency"`
-	Quantity                 decimal.Decimal     `json:"quantity"`
-	AvgBuyPrice              decimal.Decimal     `json:"avg_buy_price"`
-	ManualPrice              decimal.Decimal     `json:"manual_price"`
-	Fees                     decimal.Decimal     `json:"fees"`
-	Details                  []byte              `json:"details"`
-	CreatedByID              uuid.UUID           `json:"created_by_id"`
-	Symbol                   *string             `json:"symbol"`
-	ManualCurrentValue       decimal.NullDecimal `json:"manual_current_value"`
-	PurchaseDate             *time.Time          `json:"purchase_date"`
-	EstimatedAnnualChangePct decimal.NullDecimal `json:"estimated_annual_change_pct"`
-	ManualFxRate             decimal.NullDecimal `json:"manual_fx_rate"`
-	InstrumentID             uuid.NullUUID       `json:"instrument_id"`
-	Wrapper                  *string             `json:"wrapper"`
+	SpaceID            uuid.UUID           `json:"space_id"`
+	AssetType          string              `json:"asset_type"`
+	PriceMode          string              `json:"price_mode"`
+	Name               string              `json:"name"`
+	Icon               string              `json:"icon"`
+	QuoteCurrency      string              `json:"quote_currency"`
+	Quantity           decimal.Decimal     `json:"quantity"`
+	AvgBuyPrice        decimal.Decimal     `json:"avg_buy_price"`
+	ManualPrice        decimal.Decimal     `json:"manual_price"`
+	Fees               decimal.Decimal     `json:"fees"`
+	Details            []byte              `json:"details"`
+	CreatedByID        uuid.UUID           `json:"created_by_id"`
+	Symbol             *string             `json:"symbol"`
+	ManualCurrentValue decimal.NullDecimal `json:"manual_current_value"`
+	PurchaseDate       *time.Time          `json:"purchase_date"`
+	ManualFxRate       decimal.NullDecimal `json:"manual_fx_rate"`
+	InstrumentID       uuid.NullUUID       `json:"instrument_id"`
+	Wrapper            *string             `json:"wrapper"`
 }
 
 func (q *Queries) CreateInvestment(ctx context.Context, arg CreateInvestmentParams) (Investment, error) {
@@ -65,7 +64,6 @@ func (q *Queries) CreateInvestment(ctx context.Context, arg CreateInvestmentPara
 		arg.Symbol,
 		arg.ManualCurrentValue,
 		arg.PurchaseDate,
-		arg.EstimatedAnnualChangePct,
 		arg.ManualFxRate,
 		arg.InstrumentID,
 		arg.Wrapper,
@@ -86,7 +84,6 @@ func (q *Queries) CreateInvestment(ctx context.Context, arg CreateInvestmentPara
 		&i.Fees,
 		&i.ManualCurrentValue,
 		&i.PurchaseDate,
-		&i.EstimatedAnnualChangePct,
 		&i.ManualFxRate,
 		&i.Details,
 		&i.InstrumentID,
@@ -101,7 +98,7 @@ func (q *Queries) CreateInvestment(ctx context.Context, arg CreateInvestmentPara
 }
 
 const getInvestment = `-- name: GetInvestment :one
-SELECT id, space_id, asset_type, price_mode, name, symbol, icon, quote_currency, quantity, avg_buy_price, manual_price, fees, manual_current_value, purchase_date, estimated_annual_change_pct, manual_fx_rate, details, instrument_id, is_shared, created_by_id, created_at, updated_at, deleted_at, wrapper FROM investments WHERE id = $1 AND space_id = $2 AND deleted_at IS NULL
+SELECT id, space_id, asset_type, price_mode, name, symbol, icon, quote_currency, quantity, avg_buy_price, manual_price, fees, manual_current_value, purchase_date, manual_fx_rate, details, instrument_id, is_shared, created_by_id, created_at, updated_at, deleted_at, wrapper FROM investments WHERE id = $1 AND space_id = $2 AND deleted_at IS NULL
 `
 
 type GetInvestmentParams struct {
@@ -127,7 +124,6 @@ func (q *Queries) GetInvestment(ctx context.Context, arg GetInvestmentParams) (I
 		&i.Fees,
 		&i.ManualCurrentValue,
 		&i.PurchaseDate,
-		&i.EstimatedAnnualChangePct,
 		&i.ManualFxRate,
 		&i.Details,
 		&i.InstrumentID,
@@ -142,7 +138,7 @@ func (q *Queries) GetInvestment(ctx context.Context, arg GetInvestmentParams) (I
 }
 
 const getInvestmentByID = `-- name: GetInvestmentByID :one
-SELECT id, space_id, asset_type, price_mode, name, symbol, icon, quote_currency, quantity, avg_buy_price, manual_price, fees, manual_current_value, purchase_date, estimated_annual_change_pct, manual_fx_rate, details, instrument_id, is_shared, created_by_id, created_at, updated_at, deleted_at, wrapper FROM investments WHERE id = $1 AND deleted_at IS NULL
+SELECT id, space_id, asset_type, price_mode, name, symbol, icon, quote_currency, quantity, avg_buy_price, manual_price, fees, manual_current_value, purchase_date, manual_fx_rate, details, instrument_id, is_shared, created_by_id, created_at, updated_at, deleted_at, wrapper FROM investments WHERE id = $1 AND deleted_at IS NULL
 `
 
 // Any live investment, regardless of space (for participant flows).
@@ -164,7 +160,6 @@ func (q *Queries) GetInvestmentByID(ctx context.Context, id uuid.UUID) (Investme
 		&i.Fees,
 		&i.ManualCurrentValue,
 		&i.PurchaseDate,
-		&i.EstimatedAnnualChangePct,
 		&i.ManualFxRate,
 		&i.Details,
 		&i.InstrumentID,
@@ -179,7 +174,7 @@ func (q *Queries) GetInvestmentByID(ctx context.Context, id uuid.UUID) (Investme
 }
 
 const getInvestmentForUpdate = `-- name: GetInvestmentForUpdate :one
-SELECT id, space_id, asset_type, price_mode, name, symbol, icon, quote_currency, quantity, avg_buy_price, manual_price, fees, manual_current_value, purchase_date, estimated_annual_change_pct, manual_fx_rate, details, instrument_id, is_shared, created_by_id, created_at, updated_at, deleted_at, wrapper FROM investments WHERE id = $1 AND space_id = $2 AND deleted_at IS NULL FOR UPDATE
+SELECT id, space_id, asset_type, price_mode, name, symbol, icon, quote_currency, quantity, avg_buy_price, manual_price, fees, manual_current_value, purchase_date, manual_fx_rate, details, instrument_id, is_shared, created_by_id, created_at, updated_at, deleted_at, wrapper FROM investments WHERE id = $1 AND space_id = $2 AND deleted_at IS NULL FOR UPDATE
 `
 
 type GetInvestmentForUpdateParams struct {
@@ -205,7 +200,6 @@ func (q *Queries) GetInvestmentForUpdate(ctx context.Context, arg GetInvestmentF
 		&i.Fees,
 		&i.ManualCurrentValue,
 		&i.PurchaseDate,
-		&i.EstimatedAnnualChangePct,
 		&i.ManualFxRate,
 		&i.Details,
 		&i.InstrumentID,
@@ -220,7 +214,7 @@ func (q *Queries) GetInvestmentForUpdate(ctx context.Context, arg GetInvestmentF
 }
 
 const getInvestmentForViewer = `-- name: GetInvestmentForViewer :one
-SELECT i.id, i.space_id, i.asset_type, i.price_mode, i.name, i.symbol, i.icon, i.quote_currency, i.quantity, i.avg_buy_price, i.manual_price, i.fees, i.manual_current_value, i.purchase_date, i.estimated_annual_change_pct, i.manual_fx_rate, i.details, i.instrument_id, i.is_shared, i.created_by_id, i.created_at, i.updated_at, i.deleted_at, i.wrapper FROM investments i
+SELECT i.id, i.space_id, i.asset_type, i.price_mode, i.name, i.symbol, i.icon, i.quote_currency, i.quantity, i.avg_buy_price, i.manual_price, i.fees, i.manual_current_value, i.purchase_date, i.manual_fx_rate, i.details, i.instrument_id, i.is_shared, i.created_by_id, i.created_at, i.updated_at, i.deleted_at, i.wrapper FROM investments i
 WHERE i.id = $1 AND i.deleted_at IS NULL
   AND (
     i.space_id = $2
@@ -257,7 +251,6 @@ func (q *Queries) GetInvestmentForViewer(ctx context.Context, arg GetInvestmentF
 		&i.Fees,
 		&i.ManualCurrentValue,
 		&i.PurchaseDate,
-		&i.EstimatedAnnualChangePct,
 		&i.ManualFxRate,
 		&i.Details,
 		&i.InstrumentID,
@@ -304,7 +297,7 @@ func (q *Queries) GetViewerParticipation(ctx context.Context, arg GetViewerParti
 }
 
 const listInvestments = `-- name: ListInvestments :many
-SELECT id, space_id, asset_type, price_mode, name, symbol, icon, quote_currency, quantity, avg_buy_price, manual_price, fees, manual_current_value, purchase_date, estimated_annual_change_pct, manual_fx_rate, details, instrument_id, is_shared, created_by_id, created_at, updated_at, deleted_at, wrapper FROM investments
+SELECT id, space_id, asset_type, price_mode, name, symbol, icon, quote_currency, quantity, avg_buy_price, manual_price, fees, manual_current_value, purchase_date, manual_fx_rate, details, instrument_id, is_shared, created_by_id, created_at, updated_at, deleted_at, wrapper FROM investments
 WHERE space_id = $1 AND deleted_at IS NULL
   AND ($2::text IS NULL OR asset_type = $2::text)
 ORDER BY created_at, id
@@ -339,7 +332,6 @@ func (q *Queries) ListInvestments(ctx context.Context, arg ListInvestmentsParams
 			&i.Fees,
 			&i.ManualCurrentValue,
 			&i.PurchaseDate,
-			&i.EstimatedAnnualChangePct,
 			&i.ManualFxRate,
 			&i.Details,
 			&i.InstrumentID,
@@ -417,30 +409,29 @@ UPDATE investments SET
     price_mode = $3, name = $4, symbol = $12, icon = $5, quote_currency = $6,
     quantity = $7, avg_buy_price = $8, manual_price = $9, fees = $10,
     manual_current_value = $13, purchase_date = $14,
-    estimated_annual_change_pct = $15, manual_fx_rate = $16,
-    details = $11, wrapper = $17, updated_at = now()
+    manual_fx_rate = $15,
+    details = $11, wrapper = $16, updated_at = now()
 WHERE id = $1 AND space_id = $2 AND deleted_at IS NULL
-RETURNING id, space_id, asset_type, price_mode, name, symbol, icon, quote_currency, quantity, avg_buy_price, manual_price, fees, manual_current_value, purchase_date, estimated_annual_change_pct, manual_fx_rate, details, instrument_id, is_shared, created_by_id, created_at, updated_at, deleted_at, wrapper
+RETURNING id, space_id, asset_type, price_mode, name, symbol, icon, quote_currency, quantity, avg_buy_price, manual_price, fees, manual_current_value, purchase_date, manual_fx_rate, details, instrument_id, is_shared, created_by_id, created_at, updated_at, deleted_at, wrapper
 `
 
 type UpdateInvestmentParams struct {
-	ID                       uuid.UUID           `json:"id"`
-	SpaceID                  uuid.UUID           `json:"space_id"`
-	PriceMode                string              `json:"price_mode"`
-	Name                     string              `json:"name"`
-	Icon                     string              `json:"icon"`
-	QuoteCurrency            string              `json:"quote_currency"`
-	Quantity                 decimal.Decimal     `json:"quantity"`
-	AvgBuyPrice              decimal.Decimal     `json:"avg_buy_price"`
-	ManualPrice              decimal.Decimal     `json:"manual_price"`
-	Fees                     decimal.Decimal     `json:"fees"`
-	Details                  []byte              `json:"details"`
-	Symbol                   *string             `json:"symbol"`
-	ManualCurrentValue       decimal.NullDecimal `json:"manual_current_value"`
-	PurchaseDate             *time.Time          `json:"purchase_date"`
-	EstimatedAnnualChangePct decimal.NullDecimal `json:"estimated_annual_change_pct"`
-	ManualFxRate             decimal.NullDecimal `json:"manual_fx_rate"`
-	Wrapper                  *string             `json:"wrapper"`
+	ID                 uuid.UUID           `json:"id"`
+	SpaceID            uuid.UUID           `json:"space_id"`
+	PriceMode          string              `json:"price_mode"`
+	Name               string              `json:"name"`
+	Icon               string              `json:"icon"`
+	QuoteCurrency      string              `json:"quote_currency"`
+	Quantity           decimal.Decimal     `json:"quantity"`
+	AvgBuyPrice        decimal.Decimal     `json:"avg_buy_price"`
+	ManualPrice        decimal.Decimal     `json:"manual_price"`
+	Fees               decimal.Decimal     `json:"fees"`
+	Details            []byte              `json:"details"`
+	Symbol             *string             `json:"symbol"`
+	ManualCurrentValue decimal.NullDecimal `json:"manual_current_value"`
+	PurchaseDate       *time.Time          `json:"purchase_date"`
+	ManualFxRate       decimal.NullDecimal `json:"manual_fx_rate"`
+	Wrapper            *string             `json:"wrapper"`
 }
 
 // Full replacement of the editable columns: the service computes the final values.
@@ -460,7 +451,6 @@ func (q *Queries) UpdateInvestment(ctx context.Context, arg UpdateInvestmentPara
 		arg.Symbol,
 		arg.ManualCurrentValue,
 		arg.PurchaseDate,
-		arg.EstimatedAnnualChangePct,
 		arg.ManualFxRate,
 		arg.Wrapper,
 	)
@@ -480,7 +470,6 @@ func (q *Queries) UpdateInvestment(ctx context.Context, arg UpdateInvestmentPara
 		&i.Fees,
 		&i.ManualCurrentValue,
 		&i.PurchaseDate,
-		&i.EstimatedAnnualChangePct,
 		&i.ManualFxRate,
 		&i.Details,
 		&i.InstrumentID,
@@ -497,7 +486,7 @@ func (q *Queries) UpdateInvestment(ctx context.Context, arg UpdateInvestmentPara
 const updateInvestmentPosition = `-- name: UpdateInvestmentPosition :one
 UPDATE investments SET quantity = $3, avg_buy_price = $4, fees = $5, details = $6, updated_at = now()
 WHERE id = $1 AND space_id = $2 AND deleted_at IS NULL
-RETURNING id, space_id, asset_type, price_mode, name, symbol, icon, quote_currency, quantity, avg_buy_price, manual_price, fees, manual_current_value, purchase_date, estimated_annual_change_pct, manual_fx_rate, details, instrument_id, is_shared, created_by_id, created_at, updated_at, deleted_at, wrapper
+RETURNING id, space_id, asset_type, price_mode, name, symbol, icon, quote_currency, quantity, avg_buy_price, manual_price, fees, manual_current_value, purchase_date, manual_fx_rate, details, instrument_id, is_shared, created_by_id, created_at, updated_at, deleted_at, wrapper
 `
 
 type UpdateInvestmentPositionParams struct {
@@ -534,7 +523,6 @@ func (q *Queries) UpdateInvestmentPosition(ctx context.Context, arg UpdateInvest
 		&i.Fees,
 		&i.ManualCurrentValue,
 		&i.PurchaseDate,
-		&i.EstimatedAnnualChangePct,
 		&i.ManualFxRate,
 		&i.Details,
 		&i.InstrumentID,

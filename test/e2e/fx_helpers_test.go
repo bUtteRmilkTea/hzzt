@@ -52,5 +52,3 @@ func defaultRates(c *testClock) currency.RateSet {
 
 var errProvider = errors.New("provider down")
 
-// nullDec is a valid sql NullDecimal from a literal.
-func nullDec(s string) decimal.NullDecimal { return decimal.NullDecimal{Decimal: dec(s), Valid: true} }

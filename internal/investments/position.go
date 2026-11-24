@@ -73,14 +73,13 @@ func (p Position) Buy(l Leg) Position {
 //
 //	realized_pl = (unit_price − avg) × Δq − fee
 //
-// The average and the fees already paid stay as they are. staked is the part of
-// the quantity that cannot be sold (crypto staking); selling more than
-// quantity − staked fails with INSUFFICIENT_QUANTITY.
-func (p Position) Sell(l Leg, staked decimal.Decimal) (Position, decimal.Decimal, error) {
-	available := p.Quantity.Sub(staked)
+// The average and the fees already paid stay as they are. Selling more than the
+// quantity fails with INSUFFICIENT_QUANTITY.
+func (p Position) Sell(l Leg) (Position, decimal.Decimal, error) {
+	available := p.Quantity
 	if l.Quantity.GreaterThan(available) {
 		return Position{}, decimal.Zero, apperror.Unprocessable(CodeInsufficientQuantity,
-			fmt.Sprintf("Only %s can be sold (quantity %s, staked %s)", available.String(), p.Quantity.String(), staked.String())).
+			fmt.Sprintf("Only %s can be sold", available.String())).
 			WithDetails(map[string]any{"available": available.String(), "requested": l.Quantity.String()})
 	}
 	realized := l.UnitPrice.Sub(p.AvgBuyPrice).Mul(l.Quantity).Sub(l.Fee)

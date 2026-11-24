@@ -47,7 +47,6 @@ func TestCreateIDStockDerivesQuantityFromLots(t *testing.T) {
 	assert.Equal(t, "IDR", s.QuoteCurrency)
 	assert.Equal(t, "BBCA", *s.Symbol)
 	assert.Equal(t, PriceModeManual, s.PriceMode)
-	assert.Nil(t, s.EstimatedAnnualChangePct, "no assumed return")
 	assert.Equal(t, "🇮🇩", s.Icon)
 	assert.Equal(t, idStockDetails{Broker: strp("Stockbit"), Lots: jnp("2")}, s.Details)
 
@@ -72,7 +71,6 @@ func TestCreateValidationPerType(t *testing.T) {
 		{"crypto: missing symbol", `{"assetType":"CRYPTO","name":"Bitcoin","quantity":"1"}`, "symbol"},
 		{"crypto: negative quantity", `{"assetType":"CRYPTO","name":"Bitcoin","symbol":"BTC","quantity":"-1"}`, "quantity"},
 		{"crypto: 19 decimals", `{"assetType":"CRYPTO","name":"Bitcoin","symbol":"BTC","quantity":"0.1234567890123456789"}`, "quantity"},
-		{"crypto: staked > quantity", `{"assetType":"CRYPTO","name":"Ethereum","symbol":"ETH","quantity":"2","details":{"stakedQuantity":"2.5"}}`, "details.stakedQuantity"},
 		{"crypto: unknown detail", `{"assetType":"CRYPTO","name":"Ethereum","symbol":"ETH","quantity":"2","details":{"lots":2}}`, "details"},
 		{"crypto: wrong quote currency", `{"assetType":"CRYPTO","name":"Bitcoin","symbol":"BTC","quantity":"1","quoteCurrency":"IDR"}`, "quoteCurrency"},
 		{"id stock: missing lots", `{"assetType":"ID_STOCK","name":"BBCA","symbol":"BBCA","details":{}}`, "details.lots"},
@@ -81,7 +79,6 @@ func TestCreateValidationPerType(t *testing.T) {
 		{"id stock: lots with 2 decimals", `{"assetType":"ID_STOCK","name":"BBCA","symbol":"BBCA","details":{"lots":1.55}}`, "details.lots"},
 		{"crypto: 9 decimals", `{"assetType":"CRYPTO","name":"Bitcoin","symbol":"BTC","quantity":"0.123456789"}`, "quantity"},
 		{"us stock: 2 decimals", `{"assetType":"US_STOCK","name":"Apple","symbol":"AAPL","quantity":"1.25","details":{"exchange":"NASDAQ"}}`, "quantity"},
-		{"crypto: staked with 9 decimals", `{"assetType":"CRYPTO","name":"Ethereum","symbol":"ETH","quantity":"2","details":{"stakedQuantity":"0.123456789"}}`, "details.stakedQuantity"},
 		{"id stock: quantity is derived, not sent", `{"assetType":"ID_STOCK","name":"BBCA","symbol":"BBCA","quantity":"200","details":{"lots":2}}`, "assetType"},
 		{"id stock: wrong quote", `{"assetType":"ID_STOCK","name":"BBCA","symbol":"BBCA","quoteCurrency":"USD","details":{"lots":1}}`, "quoteCurrency"},
 		{"us stock: missing exchange", `{"assetType":"US_STOCK","name":"Apple","symbol":"AAPL","quantity":"1","details":{}}`, "details.exchange"},
@@ -96,8 +93,6 @@ func TestCreateValidationPerType(t *testing.T) {
 		{"too many decimals", `{"assetType":"US_STOCK","name":"A","symbol":"A","quantity":"1","avgBuyPrice":"1.123456789","details":{"exchange":"NYSE"}}`, "avgBuyPrice"},
 		{"huge value", `{"assetType":"US_STOCK","name":"A","symbol":"A","quantity":"1","manualCurrentValue":"100000000000000000000","details":{"exchange":"NYSE"}}`, "manualCurrentValue"},
 		{"zero fx rate", `{"assetType":"US_STOCK","name":"A","symbol":"A","quantity":"1","manualFxRate":"0","details":{"exchange":"NYSE"}}`, "manualFxRate"},
-		{"change below -100", `{"assetType":"US_STOCK","name":"A","symbol":"A","quantity":"1","estimatedAnnualChangePct":"-100.5","details":{"exchange":"NYSE"}}`, "estimatedAnnualChangePct"},
-		{"change above 1000", `{"assetType":"US_STOCK","name":"A","symbol":"A","quantity":"1","estimatedAnnualChangePct":"1000.1","details":{"exchange":"NYSE"}}`, "estimatedAnnualChangePct"},
 		{"bad price mode", `{"assetType":"US_STOCK","name":"A","symbol":"A","quantity":"1","priceMode":"LIVE","details":{"exchange":"NYSE"}}`, "priceMode"},
 		{"bad purchase date", `{"assetType":"US_STOCK","name":"A","symbol":"A","quantity":"1","purchaseDate":"yesterday","details":{"exchange":"NYSE"}}`, "purchaseDate"},
 		{"bad icon", `{"assetType":"US_STOCK","name":"A","symbol":"A","quantity":"1","icon":"","details":{"exchange":"NYSE"}}`, "icon"},
@@ -121,7 +116,7 @@ func TestCreateValidationPerType(t *testing.T) {
 }
 
 func TestCreateValidPerType(t *testing.T) {
-	t.Run("crypto with staking", func(t *testing.T) {
+	t.Run("crypto (old staked field is ignored)", func(t *testing.T) {
 		s, err := decodeCreate(t, `{"assetType":"CRYPTO","name":"Ethereum","symbol":"eth","quantity":"2","avgBuyPrice":"3000","manualPrice":"3500","priceMode":"AUTO","details":{"exchangeOrWallet":"Ledger","network":"Ethereum","stakedQuantity":"1.5"}}`)
 		require.NoError(t, err)
 		assert.Equal(t, "USD", s.QuoteCurrency)
@@ -129,10 +124,10 @@ func TestCreateValidPerType(t *testing.T) {
 		assert.Equal(t, "ETH", *s.Symbol)
 		assert.Equal(t, "🪙", s.Icon)
 		assert.True(t, d("2").Equal(s.Quantity))
-		assert.True(t, d("1.5").Equal(*s.Details.(cryptoDetails).StakedQuantity))
+		assert.Nil(t, s.Details.(cryptoDetails).StakedQuantity, "the removed field is not kept")
 
 		_, err = decodeCreate(t, `{"assetType":"CRYPTO","name":"ETH","symbol":"ETH","quantity":"2","details":{"stakedQuantity":"2"}}`)
-		assert.NoError(t, err, "staked == quantity is fine")
+		assert.NoError(t, err, "any old staked value is accepted and ignored")
 	})
 	t.Run("us stock", func(t *testing.T) {
 		s, err := decodeCreate(t, `{"assetType":"US_STOCK","name":"Apple","symbol":"AAPL","quantity":"12.5","fees":"1.25","manualCurrentValue":"3000","manualFxRate":"16000","purchaseDate":"2026-01-31","details":{"exchange":"NASDAQ","platform":"IBKR"}}`)
@@ -196,7 +191,6 @@ func TestMetasMirrorTheInputs(t *testing.T) {
 		} else {
 			assert.Equal(t, PriceModeManual, m.Defaults.PriceMode)
 		}
-		assert.Nil(t, m.Defaults.EstimatedAnnualChangePct, "no assumed return")
 		// auto pricing is only advertised where creating AUTO works
 		_, err := buildSpec(m.AssetType, "n", &base{PriceMode: strp("AUTO"), Symbol: strp("S")}, dp("1"), validDetails(m.AssetType), "IDR")
 		if m.SupportsAutoPrice {
@@ -249,7 +243,7 @@ func rowFor(t *testing.T, body string) sqlc.Investment {
 	r := sqlc.Investment{
 		AssetType: s.AssetType, PriceMode: s.PriceMode, Name: s.Name, Symbol: s.Symbol, Icon: s.Icon,
 		QuoteCurrency: s.QuoteCurrency, Quantity: s.Quantity, AvgBuyPrice: s.AvgBuyPrice, ManualPrice: s.ManualPrice,
-		Fees: s.Fees, PurchaseDate: s.PurchaseDate, EstimatedAnnualChangePct: toNullDecimal(s.EstimatedAnnualChangePct), Details: details,
+		Fees: s.Fees, PurchaseDate: s.PurchaseDate, Details: details,
 	}
 	if s.ManualCurrentValue != nil {
 		r.ManualCurrentValue = nd(s.ManualCurrentValue.String())
@@ -267,7 +261,7 @@ func patch(t *testing.T, body string) PatchInput {
 
 func TestPatch(t *testing.T) {
 	bbca := rowFor(t, `{"assetType":"ID_STOCK","name":"BBCA","symbol":"BBCA","avgBuyPrice":"9200","manualPrice":"9500","manualCurrentValue":"2000000","details":{"broker":"Stockbit","lots":2}}`)
-	btc := rowFor(t, `{"assetType":"CRYPTO","name":"Bitcoin","symbol":"BTC","quantity":"2","details":{"stakedQuantity":"1"}}`)
+	btc := rowFor(t, `{"assetType":"CRYPTO","name":"Bitcoin","symbol":"BTC","quantity":"2","details":{"network":"Bitcoin"}}`)
 
 	t.Run("partial: untouched fields stay", func(t *testing.T) {
 		s, err := patch(t, `{"manualPrice":"9800"}`).apply(bbca, "IDR")
@@ -298,14 +292,11 @@ func TestPatch(t *testing.T) {
 		_, err := patch(t, `{"quantity":"300"}`).apply(bbca, "IDR")
 		assert.Contains(t, fieldsOf(t, err), "quantity")
 	})
-	t.Run("crypto: staked must stay within quantity", func(t *testing.T) {
-		_, err := patch(t, `{"quantity":"0.5"}`).apply(btc, "IDR")
-		assert.Contains(t, fieldsOf(t, err), "details.stakedQuantity", "shrinking quantity below the stored stake")
-		_, err = patch(t, `{"details":{"stakedQuantity":"3"}}`).apply(btc, "IDR")
-		assert.Contains(t, fieldsOf(t, err), "details.stakedQuantity")
-		s, err := patch(t, `{"quantity":"5","details":{"stakedQuantity":"3"}}`).apply(btc, "IDR")
+	t.Run("crypto: the old staked and yearly change fields are accepted and ignored", func(t *testing.T) {
+		s, err := patch(t, `{"quantity":"0.5","estimatedAnnualChangePct":"5","details":{"stakedQuantity":"3"}}`).apply(btc, "IDR")
 		require.NoError(t, err)
-		assert.True(t, d("5").Equal(s.Quantity))
+		assert.True(t, d("0.5").Equal(s.Quantity))
+		assert.Nil(t, s.Details.(cryptoDetails).StakedQuantity)
 	})
 	t.Run("auto price rules apply on update too", func(t *testing.T) {
 		_, err := patch(t, `{"priceMode":"AUTO"}`).apply(bbca, "IDR")
@@ -332,7 +323,7 @@ func TestPatch(t *testing.T) {
 	})
 	t.Run("validation", func(t *testing.T) {
 		for name, body := range map[string]string{
-			"negative price": `{"manualPrice":"-1"}`, "bad fx rate": `{"manualFxRate":"0"}`, "bad change": `{"estimatedAnnualChangePct":"5000"}`,
+			"negative price": `{"manualPrice":"-1"}`, "bad fx rate": `{"manualFxRate":"0"}`,
 			"bad date": `{"purchaseDate":"x"}`, "bad details": `{"details":{"lots":-3}}`, "unknown detail": `{"details":{"exchange":"NYSE"}}`,
 			"blank name": `{"name":"  "}`,
 		} {

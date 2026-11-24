@@ -751,9 +751,6 @@ definitions:
         type: string
       details:
         type: object
-      estimatedAnnualChangePct:
-        example: "5.5"
-        type: string
       fees:
         type: string
       funding:
@@ -803,10 +800,10 @@ definitions:
         - ENUM
         type: string
       label:
-        example: Staked quantity
+        example: Network
         type: string
       name:
-        example: stakedQuantity
+        example: network
         type: string
       options:
         items:
@@ -855,10 +852,6 @@ definitions:
         type: string
       details:
         type: object
-      estimatedAnnualChangePct:
-        description: EstimatedAnnualChangePct is the user's own assumed yearly change
-          in percent; null when never set (there is no default).
-        type: string
       fees:
         type: string
       fxAsOf:
@@ -1029,8 +1022,6 @@ definitions:
         type: string
       details:
         type: object
-      estimatedAnnualChangePct:
-        type: string
       fees:
         type: string
       icon:
@@ -1199,10 +1190,6 @@ definitions:
     type: object
   investments.TypeDefaults:
     properties:
-      estimatedAnnualChangePct:
-        description: 'EstimatedAnnualChangePct is always null: there is no assumed
-          return (the field is kept so clients can rely on it).'
-        type: string
       fees:
         type: string
       priceMode:
@@ -1412,8 +1399,6 @@ definitions:
       dueDate:
         example: "2026-12-31"
         type: string
-      estimatedAnnualChangePct:
-        type: string
       history:
         description: detail only, newest first
         items:
@@ -1485,8 +1470,6 @@ definitions:
         example: "2026-12-31"
         maxLength: 10
         type: string
-      estimatedAnnualChangePct:
-        type: string
       icon:
         maxLength: 64
         type: string
@@ -1534,8 +1517,6 @@ definitions:
       currentValue:
         type: string
       dueDate:
-        type: string
-      estimatedAnnualChangePct:
         type: string
       icon:
         maxLength: 64
@@ -4299,14 +4280,13 @@ paths:
       consumes:
       - application/json
       description: 'The body is validated by `assetType` (see GET /investment-types).
-        ID_STOCK takes `details.lots` and derives quantity = lots × 100. CRYPTO checks
-        `details.stakedQuantity` <= quantity. `priceMode: AUTO` is accepted for CRYPTO,
-        US_STOCK and GLOBAL_ETF and answers 422 AUTO_PRICE_NOT_SUPPORTED otherwise.
-        A CRYPTO created without `priceMode` is AUTO by default and linked to its
-        CoinMarketCap coin by symbol; if the symbol is unknown or ambiguous the holding
-        is created as MANUAL and `valuation.warnings` carries `PRICE_NOT_LINKED` (an
-        explicit `priceMode` never falls back). Valuation warnings also include `PRICE_STALE`
-        (a stale market price still counts and is flagged) and `MANUAL_VALUE_OVERRIDES_MARKET`
+        ID_STOCK takes `details.lots` and derives quantity = lots × 100. `priceMode:
+        AUTO` is accepted for CRYPTO, US_STOCK and GLOBAL_ETF and answers 422 AUTO_PRICE_NOT_SUPPORTED
+        otherwise. A CRYPTO created without `priceMode` is AUTO by default and linked
+        to its CoinMarketCap coin by symbol; if the symbol is unknown or ambiguous
+        the holding is created as MANUAL and `valuation.warnings` carries `PRICE_NOT_LINKED`
+        (an explicit `priceMode` never falls back). Valuation warnings also include
+        `PRICE_STALE` (a stale market price still counts and is flagged) and `MANUAL_VALUE_OVERRIDES_MARKET`
         (an AUTO holding with a manual current value, which wins). An AUTO investment
         is linked to a market instrument: send the `instrumentId` picked from GET
         /market/crypto/search (CRYPTO) or GET /market/stocks/search (US_STOCK, GLOBAL_ETF),
@@ -4936,8 +4916,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: For a liability `currentValue` is the outstanding amount. `estimatedAnnualChangePct`
-        applies to fixed assets only.
+      description: For a liability `currentValue` is the outstanding amount.
       parameters:
       - description: Space ID
         in: path
@@ -5028,8 +5007,8 @@ paths:
       consumes:
       - application/json
       description: Changing `currentValue` is recorded in the value history. `counterpartyName`,
-        `dueDate`, `estimatedAnnualChangePct` and `note` accept null to clear. The
-        currency can only change while the asset has no settlements (MANUAL_ASSET_CURRENCY_LOCKED).
+        `dueDate` and `note` accept null to clear. The currency can only change while
+        the asset has no settlements (MANUAL_ASSET_CURRENCY_LOCKED).
       parameters:
       - description: Space ID
         in: path
@@ -5594,9 +5573,9 @@ paths:
         unless `amount` is given; the position becomes new_qty = q + Δq and new_avg
         = (q × avg + Δq × unitPrice) / new_qty, fees += fee.\n\n**SELL** (investment
         → wallet): the wallet is credited quantity × unitPrice − fee; the average
-        stays; `realizedPl` = (unitPrice − avg) × Δq − fee. Selling more than quantity
-        − stakedQuantity answers 422 INSUFFICIENT_QUANTITY.\n\nInvestment → investment
-        is not supported. Transfers and trades never count as income or expense; they
+        stays; `realizedPl` = (unitPrice − avg) × Δq − fee. Selling more than the
+        quantity answers 422 INSUFFICIENT_QUANTITY.\n\nInvestment → investment is
+        not supported. Transfers and trades never count as income or expense; they
         show in the `transfer` column of the daily summary and in the history of the
         wallet.'
       parameters:

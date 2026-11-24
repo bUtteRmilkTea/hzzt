@@ -61,8 +61,8 @@ var (
 
 // FieldMeta describes one input field for dynamic forms.
 type FieldMeta struct {
-	Name     string   `json:"name" example:"stakedQuantity"`
-	Label    string   `json:"label" example:"Staked quantity"`
+	Name     string   `json:"name" example:"network"`
+	Label    string   `json:"label" example:"Network"`
 	Kind     string   `json:"kind" enums:"TEXT,INTEGER,DECIMAL,DATE,ENUM"`
 	Required bool     `json:"required"`
 	Options  []string `json:"options,omitempty"`
@@ -89,9 +89,7 @@ type TypeMeta struct {
 // TypeDefaults are the defaults applied when a field is omitted.
 type TypeDefaults struct {
 	PriceMode string `json:"priceMode"`
-	// EstimatedAnnualChangePct is always null: there is no assumed return (the field is kept so clients can rely on it).
-	EstimatedAnnualChangePct *string `json:"estimatedAnnualChangePct"`
-	Fees                     string  `json:"fees"`
+	Fees      string `json:"fees"`
 }
 
 // FundTypes are the allowed mutual fund types.
@@ -108,7 +106,6 @@ var Metas = []TypeMeta{
 		DetailFields: []FieldMeta{
 			{Name: "exchangeOrWallet", Label: "Exchange or wallet", Kind: "TEXT"},
 			{Name: "network", Label: "Network", Kind: "TEXT"},
-			{Name: "stakedQuantity", Label: "Staked quantity", Kind: "DECIMAL"},
 		},
 	},
 	{

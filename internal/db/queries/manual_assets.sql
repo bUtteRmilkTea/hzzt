@@ -1,8 +1,8 @@
 -- name: CreateManualAsset :one
 INSERT INTO manual_assets (space_id, kind, name, icon, currency, current_value, counterparty_name, due_date,
-                           estimated_annual_change_pct, note, created_by_id)
+                           note, created_by_id)
 VALUES ($1, $2, $3, $4, $5, $6, sqlc.narg('counterparty_name'), sqlc.narg('due_date'),
-        sqlc.narg('estimated_annual_change_pct'), sqlc.narg('note'), $7)
+        sqlc.narg('note'), $7)
 RETURNING *;
 
 -- name: GetManualAsset :one
@@ -26,7 +26,7 @@ ORDER BY kind, created_at, id;
 UPDATE manual_assets SET
     name = $3, icon = $4, currency = $5, current_value = $6,
     counterparty_name = sqlc.narg('counterparty_name'), due_date = sqlc.narg('due_date'),
-    estimated_annual_change_pct = sqlc.narg('estimated_annual_change_pct'), note = sqlc.narg('note'),
+    note = sqlc.narg('note'),
     updated_at = now()
 WHERE id = $1 AND space_id = $2 AND deleted_at IS NULL
 RETURNING *;

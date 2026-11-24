@@ -61,30 +61,29 @@ type GoalAllocation struct {
 }
 
 type Investment struct {
-	ID                       uuid.UUID           `json:"id"`
-	SpaceID                  uuid.UUID           `json:"space_id"`
-	AssetType                string              `json:"asset_type"`
-	PriceMode                string              `json:"price_mode"`
-	Name                     string              `json:"name"`
-	Symbol                   *string             `json:"symbol"`
-	Icon                     string              `json:"icon"`
-	QuoteCurrency            string              `json:"quote_currency"`
-	Quantity                 decimal.Decimal     `json:"quantity"`
-	AvgBuyPrice              decimal.Decimal     `json:"avg_buy_price"`
-	ManualPrice              decimal.Decimal     `json:"manual_price"`
-	Fees                     decimal.Decimal     `json:"fees"`
-	ManualCurrentValue       decimal.NullDecimal `json:"manual_current_value"`
-	PurchaseDate             *time.Time          `json:"purchase_date"`
-	EstimatedAnnualChangePct decimal.NullDecimal `json:"estimated_annual_change_pct"`
-	ManualFxRate             decimal.NullDecimal `json:"manual_fx_rate"`
-	Details                  []byte              `json:"details"`
-	InstrumentID             uuid.NullUUID       `json:"instrument_id"`
-	IsShared                 bool                `json:"is_shared"`
-	CreatedByID              uuid.UUID           `json:"created_by_id"`
-	CreatedAt                time.Time           `json:"created_at"`
-	UpdatedAt                time.Time           `json:"updated_at"`
-	DeletedAt                *time.Time          `json:"deleted_at"`
-	Wrapper                  *string             `json:"wrapper"`
+	ID                 uuid.UUID           `json:"id"`
+	SpaceID            uuid.UUID           `json:"space_id"`
+	AssetType          string              `json:"asset_type"`
+	PriceMode          string              `json:"price_mode"`
+	Name               string              `json:"name"`
+	Symbol             *string             `json:"symbol"`
+	Icon               string              `json:"icon"`
+	QuoteCurrency      string              `json:"quote_currency"`
+	Quantity           decimal.Decimal     `json:"quantity"`
+	AvgBuyPrice        decimal.Decimal     `json:"avg_buy_price"`
+	ManualPrice        decimal.Decimal     `json:"manual_price"`
+	Fees               decimal.Decimal     `json:"fees"`
+	ManualCurrentValue decimal.NullDecimal `json:"manual_current_value"`
+	PurchaseDate       *time.Time          `json:"purchase_date"`
+	ManualFxRate       decimal.NullDecimal `json:"manual_fx_rate"`
+	Details            []byte              `json:"details"`
+	InstrumentID       uuid.NullUUID       `json:"instrument_id"`
+	IsShared           bool                `json:"is_shared"`
+	CreatedByID        uuid.UUID           `json:"created_by_id"`
+	CreatedAt          time.Time           `json:"created_at"`
+	UpdatedAt          time.Time           `json:"updated_at"`
+	DeletedAt          *time.Time          `json:"deleted_at"`
+	Wrapper            *string             `json:"wrapper"`
 }
 
 type InvestmentParticipant struct {
@@ -132,21 +131,20 @@ type JobRun struct {
 }
 
 type ManualAsset struct {
-	ID                       uuid.UUID           `json:"id"`
-	SpaceID                  uuid.UUID           `json:"space_id"`
-	Kind                     string              `json:"kind"`
-	Name                     string              `json:"name"`
-	Icon                     string              `json:"icon"`
-	Currency                 string              `json:"currency"`
-	CurrentValue             decimal.Decimal     `json:"current_value"`
-	CounterpartyName         *string             `json:"counterparty_name"`
-	DueDate                  *time.Time          `json:"due_date"`
-	EstimatedAnnualChangePct decimal.NullDecimal `json:"estimated_annual_change_pct"`
-	Note                     *string             `json:"note"`
-	CreatedByID              uuid.UUID           `json:"created_by_id"`
-	CreatedAt                time.Time           `json:"created_at"`
-	UpdatedAt                time.Time           `json:"updated_at"`
-	DeletedAt                *time.Time          `json:"deleted_at"`
+	ID               uuid.UUID       `json:"id"`
+	SpaceID          uuid.UUID       `json:"space_id"`
+	Kind             string          `json:"kind"`
+	Name             string          `json:"name"`
+	Icon             string          `json:"icon"`
+	Currency         string          `json:"currency"`
+	CurrentValue     decimal.Decimal `json:"current_value"`
+	CounterpartyName *string         `json:"counterparty_name"`
+	DueDate          *time.Time      `json:"due_date"`
+	Note             *string         `json:"note"`
+	CreatedByID      uuid.UUID       `json:"created_by_id"`
+	CreatedAt        time.Time       `json:"created_at"`
+	UpdatedAt        time.Time       `json:"updated_at"`
+	DeletedAt        *time.Time      `json:"deleted_at"`
 }
 
 type ManualAssetValueChange struct {

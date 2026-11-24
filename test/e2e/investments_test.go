@@ -33,26 +33,25 @@ type valuationBody struct {
 }
 
 type investmentBody struct {
-	ID                       string         `json:"id"`
-	AssetType                string         `json:"assetType"`
-	PriceMode                string         `json:"priceMode"`
-	Name                     string         `json:"name"`
-	Symbol                   *string        `json:"symbol"`
-	Icon                     string         `json:"icon"`
-	QuoteCurrency            string         `json:"quoteCurrency"`
-	Quantity                 string         `json:"quantity"`
-	AvgBuyPrice              string         `json:"avgBuyPrice"`
-	ManualPrice              string         `json:"manualPrice"`
-	Fees                     string         `json:"fees"`
-	ManualCurrentValue       *string        `json:"manualCurrentValue"`
-	PurchaseDate             *string        `json:"purchaseDate"`
-	EstimatedAnnualChangePct *string        `json:"estimatedAnnualChangePct"`
-	ManualFxRate             *string        `json:"manualFxRate"`
-	FxRate                   *string        `json:"fxRate"`
-	FxSource                 *string        `json:"fxSource"`
-	FxAsOf                   *string        `json:"fxAsOf"`
-	Details                  map[string]any `json:"details"`
-	RealizedPL               struct {
+	ID                 string         `json:"id"`
+	AssetType          string         `json:"assetType"`
+	PriceMode          string         `json:"priceMode"`
+	Name               string         `json:"name"`
+	Symbol             *string        `json:"symbol"`
+	Icon               string         `json:"icon"`
+	QuoteCurrency      string         `json:"quoteCurrency"`
+	Quantity           string         `json:"quantity"`
+	AvgBuyPrice        string         `json:"avgBuyPrice"`
+	ManualPrice        string         `json:"manualPrice"`
+	Fees               string         `json:"fees"`
+	ManualCurrentValue *string        `json:"manualCurrentValue"`
+	PurchaseDate       *string        `json:"purchaseDate"`
+	ManualFxRate       *string        `json:"manualFxRate"`
+	FxRate             *string        `json:"fxRate"`
+	FxSource           *string        `json:"fxSource"`
+	FxAsOf             *string        `json:"fxAsOf"`
+	Details            map[string]any `json:"details"`
+	RealizedPL         struct {
 		Amount   string  `json:"amount"`
 		Currency string  `json:"currency"`
 		Base     *string `json:"base"`
@@ -165,8 +164,7 @@ func TestInvestmentTypesEndpoint(t *testing.T) {
 		LotSize               *int    `json:"lotSize"`
 		SymbolRequired        bool    `json:"symbolRequired"`
 		Defaults              struct {
-			PriceMode                string
-			EstimatedAnnualChangePct *string
+			PriceMode string
 		} `json:"defaults"`
 		DetailFields []struct {
 			Name     string   `json:"name"`
@@ -197,7 +195,6 @@ func TestInvestmentTypesEndpoint(t *testing.T) {
 	assert.False(t, mf.SupportsAutoPrice)
 	assert.False(t, mf.SymbolRequired)
 	assert.Equal(t, "MANUAL", mf.Defaults.PriceMode)
-	assert.Nil(t, mf.Defaults.EstimatedAnnualChangePct, "no assumed return")
 	for _, f := range mf.DetailFields {
 		if f.Name == "fundType" {
 			assert.True(t, f.Required)
@@ -218,7 +215,6 @@ func TestCreateEachInvestmentType(t *testing.T) {
 		assert.Equal(t, "IDR", got.QuoteCurrency)
 		assert.Equal(t, "BBCA", *got.Symbol)
 		assert.Equal(t, "MANUAL", got.PriceMode)
-		assert.Nil(t, got.EstimatedAnnualChangePct, "not assumed")
 		assert.EqualValues(t, 2, got.Details["lots"])
 		assert.Equal(t, "Stockbit", got.Details["broker"])
 		assert.False(t, got.IsShared)
@@ -238,10 +234,10 @@ func TestCreateEachInvestmentType(t *testing.T) {
 
 	t.Run("crypto", func(t *testing.T) {
 		got := e.must(map[string]any{"assetType": "CRYPTO", "name": "Ethereum", "symbol": "eth", "quantity": "2",
-			"avgBuyPrice": "3000", "manualPrice": "3500", "details": map[string]any{"network": "Ethereum", "stakedQuantity": "1.5"}})
+			"avgBuyPrice": "3000", "manualPrice": "3500", "details": map[string]any{"network": "Ethereum"}})
 		assert.Equal(t, "USD", got.QuoteCurrency)
 		assert.Equal(t, "ETH", *got.Symbol)
-		assert.Equal(t, "1.5", got.Details["stakedQuantity"])
+		assert.Equal(t, "Ethereum", got.Details["network"])
 	})
 
 	t.Run("us stock, mutual fund and etf", func(t *testing.T) {
@@ -268,7 +264,6 @@ func TestCreateEachInvestmentType(t *testing.T) {
 			"unknown type":          {"assetType": "BOND", "name": "x"},
 			"no type":               {"name": "x"},
 			"no lots":               clone(bbca, "details", map[string]any{}),
-			"staked > qty":          {"assetType": "CRYPTO", "name": "B", "symbol": "BTC", "quantity": "1", "details": map[string]any{"stakedQuantity": "2"}},
 			"negative price":        clone(aapl, "manualPrice", "-1"),
 			"wrong quote":           clone(aapl, "quoteCurrency", "IDR"),
 			"no exchange":           clone(aapl, "details", map[string]any{}),
@@ -433,14 +428,12 @@ func TestInvestmentUpdateAndDelete(t *testing.T) {
 	stock := e.must(bbca)
 
 	t.Run("partial update keeps the rest", func(t *testing.T) {
-		res := e.patch(stock.ID, map[string]any{"manualPrice": "9800", "name": "  BCA  ", "estimatedAnnualChangePct": "8.25"})
+		res := e.patch(stock.ID, map[string]any{"manualPrice": "9800", "name": "  BCA  "})
 		require.Equal(t, http.StatusOK, res.Status, string(res.Body))
 		var got investmentBody
 		res.JSON(t, &got)
 		assert.Equal(t, "BCA", got.Name)
 		assert.True(t, dec("9800").Equal(dec(got.ManualPrice)))
-		require.NotNil(t, got.EstimatedAnnualChangePct)
-		assert.True(t, dec("8.25").Equal(dec(*got.EstimatedAnnualChangePct)))
 		assert.True(t, dec("200").Equal(dec(got.Quantity)))
 		assert.Equal(t, "BBCA", *got.Symbol)
 		assert.True(t, dec("200").Mul(dec("9800")).Equal(dec(got.Valuation.MarketValue)))
@@ -467,10 +460,9 @@ func TestInvestmentUpdateAndDelete(t *testing.T) {
 		res := e.patch(stock.ID, map[string]any{"priceMode": "AUTO"})
 		require.Equal(t, http.StatusUnprocessableEntity, res.Status)
 		assert.Equal(t, "AUTO_PRICE_NOT_SUPPORTED", errCode(t, res))
-		eth := e.must(map[string]any{"assetType": "CRYPTO", "name": "ETH", "symbol": "ETH", "quantity": "2", "details": map[string]any{"stakedQuantity": "1"}})
-		assert.Equal(t, http.StatusBadRequest, e.patch(eth.ID, map[string]any{"quantity": "0.5"}).Status, "stake would exceed the quantity")
+		eth := e.must(map[string]any{"assetType": "CRYPTO", "name": "ETH", "symbol": "ETH", "quantity": "2"})
 		assert.Equal(t, http.StatusOK, e.patch(eth.ID, map[string]any{"priceMode": "AUTO"}).Status)
-		for _, body := range []map[string]any{{"manualPrice": "-1"}, {"manualFxRate": "0"}, {"details": map[string]any{"stakedQuantity": "9"}}, {"name": " "}, {"ownership": 1}} {
+		for _, body := range []map[string]any{{"manualPrice": "-1"}, {"manualFxRate": "0"}, {"details": map[string]any{"lots": 9}}, {"name": " "}, {"ownership": 1}} {
 			assert.Equal(t, http.StatusBadRequest, e.patch(eth.ID, body).Status, "%v", body)
 		}
 	})

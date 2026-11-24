@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/rs/zerolog/log"
 	"github.com/shopspring/decimal"
 
 	"github.com/JonathanRainee/hzzt/internal/currency"
@@ -402,9 +404,12 @@ func (s *Service) UpdateTrade(ctx context.Context, spaceID, userID, id uuid.UUID
 	return out, err
 }
 
-// DeleteTrade removes a BUY/SELL, restoring the position it started from and
-// reversing the wallet effect. Like an edit it needs the position to be unchanged
-// since (409 POSITION_CHANGED_SINCE). If the investment itself was deleted only the
+// DeleteTrade removes a BUY/SELL and reverses its wallet effect. Any trade can go, not only the newest: the trades
+// recorded after it are replayed on top of the position it started from, and their position snapshots and realised
+// profit are rewritten in the same database transaction (the investment row is locked first). Each later trade keeps its
+// own wallet amounts. Refused with 422 TRADE_DELETE_BREAKS_LATER_SELL when a later SELL would no longer have enough
+// quantity (nothing changes), and with 409 POSITION_CHANGED_SINCE when the position was edited by hand after the trade
+// (the snapshots no longer form an unbroken chain up to today's position). If the investment itself was deleted only the
 // wallet effect is reversed.
 func (s *Service) DeleteTrade(ctx context.Context, spaceID, userID, id uuid.UUID) error {
 	return db.WithTx(ctx, s.db, func(tx pgx.Tx) error {
@@ -424,18 +429,33 @@ func (s *Service) DeleteTrade(ctx context.Context, spaceID, userID, id uuid.UUID
 		if err != nil && !gone {
 			return err
 		}
-		var before Position
+		var (
+			final   Position
+			later   []sqlc.Transaction
+			replay  []ReplayedTrade
+			rewrite bool
+		)
 		if !gone {
 			if err := requireOwner(inv, userID); err != nil {
 				return err
 			}
-			var after Position
-			if before, after, err = snapshots(old); err != nil {
+			chain, err := q.ListTradeChain(ctx, sqlc.ListTradeChainParams{InvestmentID: old.InvestmentID, SpaceID: spaceID})
+			if err != nil {
 				return err
 			}
-			if !PositionOf(inv).Equal(after) {
-				return errPositionChanged
+			at := slices.IndexFunc(chain, func(t sqlc.Transaction) bool { return t.ID == id })
+			if at < 0 {
+				return fmt.Errorf("trade %s is missing from the chain of investment %s", id, inv.ID)
 			}
+			parsed, err := parseChain(chain)
+			if err != nil {
+				return err
+			}
+			plan, err := planDelete(parsed, at, PositionOf(inv))
+			if err != nil {
+				return err
+			}
+			final, later, replay, rewrite = plan.final, chain[at+1:], plan.replay, true
 		}
 		if err := ledger.Reverse(ctx, tx, old); err != nil {
 			return err
@@ -443,15 +463,91 @@ func (s *Service) DeleteTrade(ctx context.Context, spaceID, userID, id uuid.UUID
 		if _, err := q.DeleteTransaction(ctx, sqlc.DeleteTransactionParams{ID: id, SpaceID: spaceID}); err != nil {
 			return err
 		}
-		if gone {
+		if !rewrite {
 			return nil
 		}
-		details, err := lotsDetails(inv, before.Quantity)
+		for i, r := range replay {
+			beforeJSON, _ := json.Marshal(r.Before)
+			afterJSON, _ := json.Marshal(r.After)
+			upd := sqlc.UpdateTradePositionsParams{ID: later[i].ID, SpaceID: spaceID, PositionBefore: beforeJSON, PositionAfter: afterJSON}
+			if r.Realized != nil {
+				upd.RealizedPl = nullD(*r.Realized)
+			}
+			if err := q.UpdateTradePositions(ctx, upd); err != nil {
+				return err
+			}
+		}
+		details, err := lotsDetails(inv, final.Quantity)
 		if err != nil {
 			return err
 		}
-		return s.writePosition(ctx, q, inv, before, details)
+		if err := s.writePosition(ctx, q, inv, final, details); err != nil {
+			return err
+		}
+		log.Info().Str("spaceId", spaceID.String()).Str("userId", userID.String()).Str("investmentId", inv.ID.String()).
+			Str("tradeId", id.String()).Int("laterTradesRewritten", len(replay)).
+			Str("positionBefore", positionLog(PositionOf(inv))).Str("positionAfter", positionLog(final)).
+			Msg("investment trade deleted")
+		return nil
 	})
+}
+
+// deletePlan is the outcome of removing one trade from a chain.
+type deletePlan struct {
+	replay []ReplayedTrade // the later trades, recomputed
+	final  Position        // the position of the investment afterwards
+}
+
+// chainTrade is a stored trade with its snapshots parsed once.
+type chainTrade struct {
+	step          TradeStep
+	before, after Position
+}
+
+// parseChain reads the snapshots of a chain of trades.
+func parseChain(chain []sqlc.Transaction) ([]chainTrade, error) {
+	out := make([]chainTrade, len(chain))
+	for i, t := range chain {
+		b, a, err := snapshots(t)
+		if err != nil {
+			return nil, err
+		}
+		action, _ := tradeOf(t)
+		out[i] = chainTrade{step: TradeStep{ID: t.ID, Action: action, Leg: legOf(t)}, before: b, after: a}
+	}
+	return out, nil
+}
+
+// planDelete works out what removing chain[at] does. The chain is the investment's trades in the order they were
+// recorded; every trade stores the position before and after it. The trades after `at` must continue the position the
+// deleted trade left (an unbroken run up to the investment's current position), otherwise the position was edited by
+// hand and the answer is errPositionChanged.
+func planDelete(chain []chainTrade, at int, current Position) (deletePlan, error) {
+	expect := chain[at].after
+	steps := make([]TradeStep, 0, len(chain)-at-1)
+	for _, t := range chain[at+1:] {
+		if !t.before.Equal(expect) {
+			return deletePlan{}, errPositionChanged
+		}
+		expect = t.after
+		steps = append(steps, t.step)
+	}
+	if !current.Equal(expect) {
+		return deletePlan{}, errPositionChanged
+	}
+	replay, err := ReplayPositions(chain[at].before, steps)
+	if err != nil {
+		return deletePlan{}, err
+	}
+	plan := deletePlan{replay: replay, final: chain[at].before}
+	if len(replay) > 0 {
+		plan.final = replay[len(replay)-1].After
+	}
+	return plan, nil
+}
+
+func positionLog(p Position) string {
+	return fmt.Sprintf("qty=%s avg=%s fees=%s", p.Quantity, p.AvgBuyPrice, p.Fees)
 }
 
 func snapshots(t sqlc.Transaction) (before, after Position, err error) {

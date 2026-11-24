@@ -811,7 +811,7 @@ Since the filter list and query are optional in any combination, the sqlc query 
   - Δq ≤ quantity (`INSUFFICIENT_QUANTITY`; the staked quantity rule was removed in feedback round 3). The average stays the same.
   - realized_pl = (unit_price − avg) × Δq − fee, stored on the transaction. The wallet is credited with the proceeds.
 - Each BUY/SELL stores `position_before` and `position_after` (quantity, avg_buy_price, fees).
-- **Edit/delete:** allowed only if the investment's current position equals `position_after`, otherwise 409 `POSITION_CHANGED_SINCE`. Reversal restores `position_before` and reverses the wallet effect.
+- **Edit:** allowed only if the investment's current position equals `position_after`, otherwise 409 `POSITION_CHANGED_SINCE`. **Delete** (feedback round 3): any trade can be deleted; the later trades are replayed on top of the deleted trade's `position_before`, refused with 422 `TRADE_DELETE_BREAKS_LATER_SELL` when a later SELL would not fit, and 409 `POSITION_CHANGED_SINCE` when the position was edited by hand. Reversal reverses the wallet effect.
 - Shared investments (P14): only the owner can BUY/SELL.
 - `POST /investments` accepts optional `funding: {walletId}`, which creates a BUY titled "Initial position {symbol}" in the same `pgx.Tx`.
 
@@ -1132,6 +1132,7 @@ DELIVERABLES (report back)
 | INSTRUMENT_NOT_FOUND | 422 | P11 |
 | INSTRUMENT_NOT_LINKED, PRICE_MODE_NOT_AUTO | 422 | P11 |
 | INSUFFICIENT_QUANTITY, POSITION_CHANGED_SINCE | 422/409 | P13 |
+| TRADE_DELETE_BREAKS_LATER_SELL | 422 | feedback round 3, Phase N |
 | SHARE_TOTAL_INVALID, PARTICIPANT_LIMIT, OWNER_ONLY | 422/403 | P14 |
 | SHARE_INVITATION_NOT_FOUND | 404 | P14 |
 | SHARE_INVITATION_ANSWERED | 409 | P14 |

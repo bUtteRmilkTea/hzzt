@@ -397,7 +397,9 @@ type Filter struct {
 	Types       []string
 	CategoryIDs []uuid.UUID
 	WalletIDs   []uuid.UUID
-	Q           string
+	// InvestmentIDs keeps only trades of these investments.
+	InvestmentIDs []uuid.UUID
+	Q             string
 }
 
 // likePattern turns user text into an ILIKE pattern, escaping wildcards.
@@ -430,7 +432,7 @@ type ListResult struct {
 func (s *Service) List(ctx context.Context, spaceID uuid.UUID, f Filter, cursor string, limit int) (ListResult, error) {
 	p := sqlc.ListTransactionsParams{
 		SpaceID: spaceID, FromTs: f.Range.From, ToTs: f.Range.To, Types: nilIfEmpty(f.Types),
-		CategoryIds: nilIfEmpty(f.CategoryIDs), WalletIds: nilIfEmpty(f.WalletIDs), Q: likePattern(f.Q),
+		CategoryIds: nilIfEmpty(f.CategoryIDs), WalletIds: nilIfEmpty(f.WalletIDs), InvestmentIds: nilIfEmpty(f.InvestmentIDs), Q: likePattern(f.Q),
 		RowLimit: int32(limit + 1),
 	}
 	if cursor != "" {
@@ -447,7 +449,7 @@ func (s *Service) List(ctx context.Context, spaceID uuid.UUID, f Filter, cursor 
 	}
 	total, err := s.q.CountTransactions(ctx, sqlc.CountTransactionsParams{
 		SpaceID: spaceID, FromTs: f.Range.From, ToTs: f.Range.To, Types: nilIfEmpty(f.Types),
-		CategoryIds: nilIfEmpty(f.CategoryIDs), WalletIds: nilIfEmpty(f.WalletIDs), Q: likePattern(f.Q),
+		CategoryIds: nilIfEmpty(f.CategoryIDs), WalletIds: nilIfEmpty(f.WalletIDs), InvestmentIds: nilIfEmpty(f.InvestmentIDs), Q: likePattern(f.Q),
 	})
 	if err != nil {
 		return ListResult{}, err
@@ -489,7 +491,7 @@ func (s *Service) DailySummary(ctx context.Context, spaceID uuid.UUID, f Filter,
 	}
 	rows, err := s.q.DailySummaryRows(ctx, sqlc.DailySummaryRowsParams{
 		SpaceID: spaceID, Tz: tz.String(), FromTs: f.Range.From, ToTs: f.Range.To, Types: nilIfEmpty(f.Types),
-		CategoryIds: nilIfEmpty(f.CategoryIDs), WalletIds: nilIfEmpty(f.WalletIDs), Q: likePattern(f.Q),
+		CategoryIds: nilIfEmpty(f.CategoryIDs), WalletIds: nilIfEmpty(f.WalletIDs), InvestmentIds: nilIfEmpty(f.InvestmentIDs), Q: likePattern(f.Q),
 	})
 	if err != nil {
 		return SummaryResult{}, err

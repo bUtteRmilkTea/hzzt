@@ -3402,6 +3402,71 @@
                 }
             }
         },
+        "/spaces/{spaceId}/investments/{id}/trades": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Newest first (occurredAt desc, id desc) with cursor paging (`next`). Whoever can read the investment can read its history (a viewer of a shared investment too; the wallet is then hidden). `openingPosition` is the position before the oldest trade, or the whole current position when there are none; an investment created without funding starts above zero, and the history can never go below that. `canDelete` and `blockedReason` say whether `DELETE /spaces/{spaceId}/transfers/{id}` works for each row: any trade can be deleted, not only the newest; the trades after it are replayed on top of the position it started from and their `positionBefore`, `positionAfter` and `realizedPl` are rewritten (each later trade keeps its own wallet amounts). It is refused with 422 TRADE_DELETE_BREAKS_LATER_SELL (naming the first sale that would no longer fit, nothing changes) or 409 POSITION_CHANGED_SINCE (the position was edited by hand after the trade). Net worth snapshots of past days are not rewritten; only today's figures move. Only the owner can delete (403 OWNER_ONLY).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "investments"
+                ],
+                "summary": "History of the BUY and SELL trades of one investment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Space ID",
+                        "name": "spaceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Investment ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "next of the previous page",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size, 1 to 100 (default 30)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/investments.TradeListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/spaces/{spaceId}/invitations": {
             "post": {
                 "security": [
@@ -4101,7 +4166,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Newest first (occurredAt desc, id desc) with cursor pagination. `period` is TODAY, THIS_WEEK, THIS_PERIOD, LAST_7_DAYS, LAST_30_DAYS, LAST_60_DAYS, LAST_90_DAYS, THIS_YEAR or ALL_TIME; or use `from`/`to` (YYYY-MM-DD, inclusive). `types`, `categoryIds` and `walletIds` accept repeated, `[]`-suffixed or comma-separated values; walletIds matches the source or destination wallet. `q` searches title, note, category and wallet names. Filters combine with AND across fields and OR within a list.",
+                "description": "Newest first (occurredAt desc, id desc) with cursor pagination. `period` is TODAY, THIS_WEEK, THIS_PERIOD, LAST_7_DAYS, LAST_30_DAYS, LAST_60_DAYS, LAST_90_DAYS, THIS_YEAR or ALL_TIME; or use `from`/`to` (YYYY-MM-DD, inclusive). `types`, `categoryIds`, `walletIds` and `investmentIds` accept repeated, `[]`-suffixed or comma-separated values; walletIds matches the source or destination wallet. `q` searches title, note, category and wallet names. Filters combine with AND across fields and OR within a list.",
                 "produces": [
                     "application/json"
                 ],
@@ -4163,6 +4228,16 @@
                         "collectionFormat": "csv",
                         "description": "Wallet IDs",
                         "name": "walletIds",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Investment IDs (the trades of those investments)",
+                        "name": "investmentIds",
                         "in": "query"
                     },
                     {
@@ -4331,6 +4406,16 @@
                         "collectionFormat": "csv",
                         "description": "Wallet IDs",
                         "name": "walletIds",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Investment IDs (the trades of those investments)",
+                        "name": "investmentIds",
                         "in": "query"
                     },
                     {
@@ -4592,7 +4677,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "A BUY/SELL can only be deleted while the investment's position is still the one it left behind (409 POSITION_CHANGED_SINCE).",
+                "description": "Any BUY/SELL can be deleted, not only the newest: the trades recorded after it are replayed on top of the position it started from, and their position snapshots and realised profit are rewritten in the same database transaction (each later trade keeps its own wallet amounts, the deleted trade's wallet effect is reversed). Refused with 422 TRADE_DELETE_BREAKS_LATER_SELL (details.tradeId names the first later sale that would no longer have enough quantity; nothing changes) and with 409 POSITION_CHANGED_SINCE when the position was edited by hand after the trade. A second delete of the same id is 404. Net worth snapshots of past days are not rewritten. See GET /spaces/{spaceId}/investments/{id}/trades (canDelete, blockedReason).",
                 "tags": [
                     "transfers"
                 ],
@@ -4634,6 +4719,12 @@
                         "schema": {
                             "$ref": "#/definitions/httpx.ErrorEnvelope"
                         }
+                    },
+                    "422": {
+                        "description": "TRADE_DELETE_BREAKS_LATER_SELL",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
                     }
                 }
             },
@@ -4643,7 +4734,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Any field may be sent; the old effect is reversed and the new one applied atomically. For wallet transfers, changing the amount or either wallet of a cross-currency transfer requires `toAmount`. For a BUY/SELL, send the investment side as `{type:\"INVESTMENT\", quantity?, unitPrice?, fee?}` and the wallet side as `{type:\"WALLET\", walletId}`; the investment itself cannot change. A BUY/SELL can only be edited (or deleted) while the investment's position is still the one it left behind, otherwise 409 POSITION_CHANGED_SINCE.",
+                "description": "Any field may be sent; the old effect is reversed and the new one applied atomically. For wallet transfers, changing the amount or either wallet of a cross-currency transfer requires `toAmount`. For a BUY/SELL, send the investment side as `{type:\"INVESTMENT\", quantity?, unitPrice?, fee?}` and the wallet side as `{type:\"WALLET\", walletId}`; the investment itself cannot change. A BUY/SELL can only be edited while the investment's position is still the one it left behind, otherwise 409 POSITION_CHANGED_SINCE (deleting is more permissive, see DELETE).",
                 "consumes": [
                     "application/json"
                 ],
@@ -6732,6 +6823,19 @@
                 }
             }
         },
+        "investments.OpeningPositionDTO": {
+            "type": "object",
+            "properties": {
+                "avgBuyPrice": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "quantity": {
+                    "type": "string",
+                    "example": "0"
+                }
+            }
+        },
         "investments.ParticipantDTO": {
             "type": "object",
             "properties": {
@@ -6847,6 +6951,23 @@
                 "wrapper": {
                     "description": "Wrapper sets the exchange, broker or platform holding the position; null clears it.",
                     "type": "string"
+                }
+            }
+        },
+        "investments.PositionDTO": {
+            "type": "object",
+            "properties": {
+                "avgBuyPrice": {
+                    "type": "string",
+                    "example": "65000"
+                },
+                "fees": {
+                    "type": "string",
+                    "example": "10"
+                },
+                "quantity": {
+                    "type": "string",
+                    "example": "1.5"
                 }
             }
         },
@@ -7022,6 +7143,104 @@
                 "value": {
                     "type": "string",
                     "example": "900000"
+                }
+            }
+        },
+        "investments.TradeDTO": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "BUY",
+                        "SELL"
+                    ]
+                },
+                "amount": {
+                    "description": "Amount is the wallet side (what left or entered the wallet), in the wallet's currency.",
+                    "type": "string",
+                    "example": "30000"
+                },
+                "blockedByTradeId": {
+                    "type": "string"
+                },
+                "blockedReason": {
+                    "type": "string",
+                    "enum": [
+                        "OWNER_ONLY",
+                        "POSITION_CHANGED_SINCE",
+                        "TRADE_DELETE_BREAKS_LATER_SELL"
+                    ]
+                },
+                "canDelete": {
+                    "description": "CanDelete says whether DELETE /transfers/{id} would work now. When false, BlockedReason is OWNER_ONLY,\nPOSITION_CHANGED_SINCE (the position was edited by hand after the trade) or TRADE_DELETE_BREAKS_LATER_SELL.",
+                    "type": "boolean"
+                },
+                "currency": {
+                    "type": "string",
+                    "example": "USD"
+                },
+                "fee": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "occurredAt": {
+                    "type": "string"
+                },
+                "positionAfter": {
+                    "$ref": "#/definitions/investments.PositionDTO"
+                },
+                "positionBefore": {
+                    "description": "PositionBefore and PositionAfter are the position of the investment around this trade.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/investments.PositionDTO"
+                        }
+                    ]
+                },
+                "quantity": {
+                    "type": "string",
+                    "example": "0.5"
+                },
+                "realizedPl": {
+                    "type": "string"
+                },
+                "unitPrice": {
+                    "type": "string",
+                    "example": "60000"
+                },
+                "walletId": {
+                    "description": "WalletID and WalletName are null for a viewer of a shared investment (the wallet is the owner's).",
+                    "type": "string"
+                },
+                "walletName": {
+                    "type": "string"
+                }
+            }
+        },
+        "investments.TradeListResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/investments.TradeDTO"
+                    }
+                },
+                "next": {
+                    "description": "Next is the cursor of the next page; null on the last page.",
+                    "type": "string"
+                },
+                "openingPosition": {
+                    "description": "OpeningPosition is the position before the oldest trade (the whole current position when there are no trades),\nso the screen can show where the history starts. An investment created without funding starts above zero.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/investments.OpeningPositionDTO"
+                        }
+                    ]
                 }
             }
         },

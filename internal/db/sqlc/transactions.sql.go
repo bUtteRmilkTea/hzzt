@@ -92,21 +92,23 @@ WHERE t.space_id = $1
   AND ($6::uuid[] IS NULL
        OR t.wallet_id = ANY($6::uuid[])
        OR t.to_wallet_id = ANY($6::uuid[]))
-  AND ($7::text IS NULL
-       OR t.title ILIKE $7 OR t.note ILIKE $7
-       OR c.name ILIKE $7 OR w.name ILIKE $7 OR tw.name ILIKE $7
-       OR inv.name ILIKE $7 OR inv.symbol ILIKE $7
-       OR ma.name ILIKE $7 OR ma.counterparty_name ILIKE $7)
+  AND ($7::uuid[] IS NULL OR t.investment_id = ANY($7::uuid[]))
+  AND ($8::text IS NULL
+       OR t.title ILIKE $8 OR t.note ILIKE $8
+       OR c.name ILIKE $8 OR w.name ILIKE $8 OR tw.name ILIKE $8
+       OR inv.name ILIKE $8 OR inv.symbol ILIKE $8
+       OR ma.name ILIKE $8 OR ma.counterparty_name ILIKE $8)
 `
 
 type CountTransactionsParams struct {
-	SpaceID     uuid.UUID   `json:"space_id"`
-	FromTs      *time.Time  `json:"from_ts"`
-	ToTs        *time.Time  `json:"to_ts"`
-	Types       []string    `json:"types"`
-	CategoryIds []uuid.UUID `json:"category_ids"`
-	WalletIds   []uuid.UUID `json:"wallet_ids"`
-	Q           *string     `json:"q"`
+	SpaceID       uuid.UUID   `json:"space_id"`
+	FromTs        *time.Time  `json:"from_ts"`
+	ToTs          *time.Time  `json:"to_ts"`
+	Types         []string    `json:"types"`
+	CategoryIds   []uuid.UUID `json:"category_ids"`
+	WalletIds     []uuid.UUID `json:"wallet_ids"`
+	InvestmentIds []uuid.UUID `json:"investment_ids"`
+	Q             *string     `json:"q"`
 }
 
 // Same filters as ListTransactions, without the cursor and the limit.
@@ -118,6 +120,7 @@ func (q *Queries) CountTransactions(ctx context.Context, arg CountTransactionsPa
 		arg.Types,
 		arg.CategoryIds,
 		arg.WalletIds,
+		arg.InvestmentIds,
 		arg.Q,
 	)
 	var column_1 int32
@@ -256,24 +259,26 @@ WHERE t.space_id = $1
   AND ($7::uuid[] IS NULL
        OR t.wallet_id = ANY($7::uuid[])
        OR t.to_wallet_id = ANY($7::uuid[]))
-  AND ($8::text IS NULL
-       OR t.title ILIKE $8 OR t.note ILIKE $8
-       OR c.name ILIKE $8 OR w.name ILIKE $8 OR tw.name ILIKE $8
-       OR inv.name ILIKE $8 OR inv.symbol ILIKE $8
-       OR ma.name ILIKE $8 OR ma.counterparty_name ILIKE $8)
+  AND ($8::uuid[] IS NULL OR t.investment_id = ANY($8::uuid[]))
+  AND ($9::text IS NULL
+       OR t.title ILIKE $9 OR t.note ILIKE $9
+       OR c.name ILIKE $9 OR w.name ILIKE $9 OR tw.name ILIKE $9
+       OR inv.name ILIKE $9 OR inv.symbol ILIKE $9
+       OR ma.name ILIKE $9 OR ma.counterparty_name ILIKE $9)
 GROUP BY 1, 2, 3
 ORDER BY 1 DESC
 `
 
 type DailySummaryRowsParams struct {
-	SpaceID     uuid.UUID   `json:"space_id"`
-	Tz          string      `json:"tz"`
-	FromTs      *time.Time  `json:"from_ts"`
-	ToTs        *time.Time  `json:"to_ts"`
-	Types       []string    `json:"types"`
-	CategoryIds []uuid.UUID `json:"category_ids"`
-	WalletIds   []uuid.UUID `json:"wallet_ids"`
-	Q           *string     `json:"q"`
+	SpaceID       uuid.UUID   `json:"space_id"`
+	Tz            string      `json:"tz"`
+	FromTs        *time.Time  `json:"from_ts"`
+	ToTs          *time.Time  `json:"to_ts"`
+	Types         []string    `json:"types"`
+	CategoryIds   []uuid.UUID `json:"category_ids"`
+	WalletIds     []uuid.UUID `json:"wallet_ids"`
+	InvestmentIds []uuid.UUID `json:"investment_ids"`
+	Q             *string     `json:"q"`
 }
 
 type DailySummaryRowsRow struct {
@@ -293,6 +298,7 @@ func (q *Queries) DailySummaryRows(ctx context.Context, arg DailySummaryRowsPara
 		arg.Types,
 		arg.CategoryIds,
 		arg.WalletIds,
+		arg.InvestmentIds,
 		arg.Q,
 	)
 	if err != nil {
@@ -496,6 +502,178 @@ func (q *Queries) GetTransactionForUpdate(ctx context.Context, arg GetTransactio
 	return i, err
 }
 
+const listTradeChain = `-- name: ListTradeChain :many
+SELECT id, space_id, type, direction, title, note, amount, currency, wallet_id, category_id, occurred_at, created_by_id, created_at, updated_at, to_wallet_id, to_amount, to_currency, fx_rate, investment_id, investment_action, quantity, unit_price, fee, realized_pl, position_before, position_after, manual_asset_id, settlement_direction, system_key FROM transactions
+WHERE investment_id = $1 AND space_id = $2 AND investment_action IS NOT NULL
+ORDER BY created_at ASC, id ASC
+`
+
+type ListTradeChainParams struct {
+	InvestmentID uuid.NullUUID `json:"investment_id"`
+	SpaceID      uuid.UUID     `json:"space_id"`
+}
+
+// Every BUY and SELL of one investment in the order they were recorded (the order of the position snapshots).
+func (q *Queries) ListTradeChain(ctx context.Context, arg ListTradeChainParams) ([]Transaction, error) {
+	rows, err := q.db.Query(ctx, listTradeChain, arg.InvestmentID, arg.SpaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Transaction{}
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.SpaceID,
+			&i.Type,
+			&i.Direction,
+			&i.Title,
+			&i.Note,
+			&i.Amount,
+			&i.Currency,
+			&i.WalletID,
+			&i.CategoryID,
+			&i.OccurredAt,
+			&i.CreatedByID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ToWalletID,
+			&i.ToAmount,
+			&i.ToCurrency,
+			&i.FxRate,
+			&i.InvestmentID,
+			&i.InvestmentAction,
+			&i.Quantity,
+			&i.UnitPrice,
+			&i.Fee,
+			&i.RealizedPl,
+			&i.PositionBefore,
+			&i.PositionAfter,
+			&i.ManualAssetID,
+			&i.SettlementDirection,
+			&i.SystemKey,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTradesByInvestment = `-- name: ListTradesByInvestment :many
+SELECT t.id, t.space_id, t.type, t.direction, t.title, t.note, t.amount, t.currency, t.wallet_id, t.category_id, t.occurred_at, t.created_by_id, t.created_at, t.updated_at, t.to_wallet_id, t.to_amount, t.to_currency, t.fx_rate, t.investment_id, t.investment_action, t.quantity, t.unit_price, t.fee, t.realized_pl, t.position_before, t.position_after, t.manual_asset_id, t.settlement_direction, t.system_key, w.name AS wallet_name
+FROM transactions t
+LEFT JOIN wallets w ON w.id = t.wallet_id
+WHERE t.investment_id = $1 AND t.space_id = $2 AND t.investment_action IS NOT NULL
+  AND ($3::timestamptz IS NULL
+       OR (t.occurred_at, t.id) < ($3::timestamptz, $4::uuid))
+ORDER BY t.occurred_at DESC, t.id DESC
+LIMIT $5::int
+`
+
+type ListTradesByInvestmentParams struct {
+	InvestmentID uuid.NullUUID `json:"investment_id"`
+	SpaceID      uuid.UUID     `json:"space_id"`
+	CursorAt     *time.Time    `json:"cursor_at"`
+	CursorID     uuid.NullUUID `json:"cursor_id"`
+	RowLimit     int32         `json:"row_limit"`
+}
+
+type ListTradesByInvestmentRow struct {
+	ID                  uuid.UUID           `json:"id"`
+	SpaceID             uuid.UUID           `json:"space_id"`
+	Type                string              `json:"type"`
+	Direction           *string             `json:"direction"`
+	Title               *string             `json:"title"`
+	Note                *string             `json:"note"`
+	Amount              decimal.Decimal     `json:"amount"`
+	Currency            string              `json:"currency"`
+	WalletID            uuid.NullUUID       `json:"wallet_id"`
+	CategoryID          uuid.NullUUID       `json:"category_id"`
+	OccurredAt          time.Time           `json:"occurred_at"`
+	CreatedByID         uuid.UUID           `json:"created_by_id"`
+	CreatedAt           time.Time           `json:"created_at"`
+	UpdatedAt           time.Time           `json:"updated_at"`
+	ToWalletID          uuid.NullUUID       `json:"to_wallet_id"`
+	ToAmount            decimal.NullDecimal `json:"to_amount"`
+	ToCurrency          *string             `json:"to_currency"`
+	FxRate              decimal.NullDecimal `json:"fx_rate"`
+	InvestmentID        uuid.NullUUID       `json:"investment_id"`
+	InvestmentAction    *string             `json:"investment_action"`
+	Quantity            decimal.NullDecimal `json:"quantity"`
+	UnitPrice           decimal.NullDecimal `json:"unit_price"`
+	Fee                 decimal.NullDecimal `json:"fee"`
+	RealizedPl          decimal.NullDecimal `json:"realized_pl"`
+	PositionBefore      []byte              `json:"position_before"`
+	PositionAfter       []byte              `json:"position_after"`
+	ManualAssetID       uuid.NullUUID       `json:"manual_asset_id"`
+	SettlementDirection *string             `json:"settlement_direction"`
+	SystemKey           *string             `json:"system_key"`
+	WalletName          *string             `json:"wallet_name"`
+}
+
+// The BUY and SELL rows of one investment, newest first (occurred_at desc, id desc), with the wallet name.
+func (q *Queries) ListTradesByInvestment(ctx context.Context, arg ListTradesByInvestmentParams) ([]ListTradesByInvestmentRow, error) {
+	rows, err := q.db.Query(ctx, listTradesByInvestment,
+		arg.InvestmentID,
+		arg.SpaceID,
+		arg.CursorAt,
+		arg.CursorID,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTradesByInvestmentRow{}
+	for rows.Next() {
+		var i ListTradesByInvestmentRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SpaceID,
+			&i.Type,
+			&i.Direction,
+			&i.Title,
+			&i.Note,
+			&i.Amount,
+			&i.Currency,
+			&i.WalletID,
+			&i.CategoryID,
+			&i.OccurredAt,
+			&i.CreatedByID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ToWalletID,
+			&i.ToAmount,
+			&i.ToCurrency,
+			&i.FxRate,
+			&i.InvestmentID,
+			&i.InvestmentAction,
+			&i.Quantity,
+			&i.UnitPrice,
+			&i.Fee,
+			&i.RealizedPl,
+			&i.PositionBefore,
+			&i.PositionAfter,
+			&i.ManualAssetID,
+			&i.SettlementDirection,
+			&i.SystemKey,
+			&i.WalletName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTransactions = `-- name: ListTransactions :many
 SELECT t.id, t.space_id, t.type, t.direction, t.title, t.note, t.amount, t.currency, t.wallet_id, t.category_id, t.occurred_at, t.created_by_id, t.created_at, t.updated_at, t.to_wallet_id, t.to_amount, t.to_currency, t.fx_rate, t.investment_id, t.investment_action, t.quantity, t.unit_price, t.fee, t.realized_pl, t.position_before, t.position_after, t.manual_asset_id, t.settlement_direction, t.system_key,
        w.name  AS wallet_name,  w.icon  AS wallet_icon,
@@ -517,28 +695,30 @@ WHERE t.space_id = $1
   AND ($6::uuid[] IS NULL
        OR t.wallet_id = ANY($6::uuid[])
        OR t.to_wallet_id = ANY($6::uuid[]))
-  AND ($7::text IS NULL
-       OR t.title ILIKE $7 OR t.note ILIKE $7
-       OR c.name ILIKE $7 OR w.name ILIKE $7 OR tw.name ILIKE $7
-       OR inv.name ILIKE $7 OR inv.symbol ILIKE $7
-       OR ma.name ILIKE $7 OR ma.counterparty_name ILIKE $7)
-  AND ($8::timestamptz IS NULL
-       OR (t.occurred_at, t.id) < ($8::timestamptz, $9::uuid))
+  AND ($7::uuid[] IS NULL OR t.investment_id = ANY($7::uuid[]))
+  AND ($8::text IS NULL
+       OR t.title ILIKE $8 OR t.note ILIKE $8
+       OR c.name ILIKE $8 OR w.name ILIKE $8 OR tw.name ILIKE $8
+       OR inv.name ILIKE $8 OR inv.symbol ILIKE $8
+       OR ma.name ILIKE $8 OR ma.counterparty_name ILIKE $8)
+  AND ($9::timestamptz IS NULL
+       OR (t.occurred_at, t.id) < ($9::timestamptz, $10::uuid))
 ORDER BY t.occurred_at DESC, t.id DESC
-LIMIT $10::int
+LIMIT $11::int
 `
 
 type ListTransactionsParams struct {
-	SpaceID     uuid.UUID     `json:"space_id"`
-	FromTs      *time.Time    `json:"from_ts"`
-	ToTs        *time.Time    `json:"to_ts"`
-	Types       []string      `json:"types"`
-	CategoryIds []uuid.UUID   `json:"category_ids"`
-	WalletIds   []uuid.UUID   `json:"wallet_ids"`
-	Q           *string       `json:"q"`
-	CursorAt    *time.Time    `json:"cursor_at"`
-	CursorID    uuid.NullUUID `json:"cursor_id"`
-	RowLimit    int32         `json:"row_limit"`
+	SpaceID       uuid.UUID     `json:"space_id"`
+	FromTs        *time.Time    `json:"from_ts"`
+	ToTs          *time.Time    `json:"to_ts"`
+	Types         []string      `json:"types"`
+	CategoryIds   []uuid.UUID   `json:"category_ids"`
+	WalletIds     []uuid.UUID   `json:"wallet_ids"`
+	InvestmentIds []uuid.UUID   `json:"investment_ids"`
+	Q             *string       `json:"q"`
+	CursorAt      *time.Time    `json:"cursor_at"`
+	CursorID      uuid.NullUUID `json:"cursor_id"`
+	RowLimit      int32         `json:"row_limit"`
 }
 
 type ListTransactionsRow struct {
@@ -593,6 +773,7 @@ func (q *Queries) ListTransactions(ctx context.Context, arg ListTransactionsPara
 		arg.Types,
 		arg.CategoryIds,
 		arg.WalletIds,
+		arg.InvestmentIds,
 		arg.Q,
 		arg.CursorAt,
 		arg.CursorID,
@@ -857,6 +1038,31 @@ func (q *Queries) UpdateInvestmentTrade(ctx context.Context, arg UpdateInvestmen
 		&i.SystemKey,
 	)
 	return i, err
+}
+
+const updateTradePositions = `-- name: UpdateTradePositions :exec
+UPDATE transactions SET position_before = $3, position_after = $4, realized_pl = $5, updated_at = now()
+WHERE id = $1 AND space_id = $2
+`
+
+type UpdateTradePositionsParams struct {
+	ID             uuid.UUID           `json:"id"`
+	SpaceID        uuid.UUID           `json:"space_id"`
+	PositionBefore []byte              `json:"position_before"`
+	PositionAfter  []byte              `json:"position_after"`
+	RealizedPl     decimal.NullDecimal `json:"realized_pl"`
+}
+
+// Rewrites the position snapshots and the realised result of a trade after an earlier trade was deleted.
+func (q *Queries) UpdateTradePositions(ctx context.Context, arg UpdateTradePositionsParams) error {
+	_, err := q.db.Exec(ctx, updateTradePositions,
+		arg.ID,
+		arg.SpaceID,
+		arg.PositionBefore,
+		arg.PositionAfter,
+		arg.RealizedPl,
+	)
+	return err
 }
 
 const updateTransactionNote = `-- name: UpdateTransactionNote :one

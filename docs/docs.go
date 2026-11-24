@@ -3976,6 +3976,72 @@ const docTemplate = `{
                 }
             }
         },
+        "/spaces/{spaceId}/manual-assets/{id}/value-changes/{changeId}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Sets the value back to the entry's previous value, removes the entry and answers the asset (with its history). Only the newest entry can be reverted (409 VALUE_CHANGED_SINCE otherwise): value changes are plain overwrites and a later change stores its own previous value. A settlement entry answers 409 USE_SETTLEMENT_DELETE with ` + "`" + `details.transactionId` + "`" + `; send that to DELETE .../settlements/{txnId}. The entry that created the asset answers 422 CANNOT_REVERT_INITIAL_VALUE. ` + "`" + `history[].canRevert` + "`" + ` says which entries can be reverted.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "manual-assets"
+                ],
+                "summary": "Undo the newest value change of an asset",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Space ID",
+                        "name": "spaceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Asset ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Value change ID (history[].id)",
+                        "name": "changeId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/manualassets.AssetDTO"
+                        }
+                    },
+                    "404": {
+                        "description": "MANUAL_ASSET_NOT_FOUND, VALUE_CHANGE_NOT_FOUND",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "VALUE_CHANGED_SINCE, USE_SETTLEMENT_DELETE",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "422": {
+                        "description": "CANNOT_REVERT_INITIAL_VALUE",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/spaces/{spaceId}/members": {
             "get": {
                 "security": [
@@ -7591,7 +7657,14 @@ const docTemplate = `{
         "manualassets.ValueChangeDTO": {
             "type": "object",
             "properties": {
+                "canRevert": {
+                    "description": "CanRevert is true for the newest value change (undo it with DELETE .../value-changes/{id}) and for a settlement entry whose settlement still exists (undo it with the settlement delete). The entry that created the asset can never be reverted.",
+                    "type": "boolean"
+                },
                 "changedAt": {
+                    "type": "string"
+                },
+                "id": {
                     "type": "string"
                 },
                 "newValue": {

@@ -1537,7 +1537,15 @@ definitions:
     type: object
   manualassets.ValueChangeDTO:
     properties:
+      canRevert:
+        description: CanRevert is true for the newest value change (undo it with DELETE
+          .../value-changes/{id}) and for a settlement entry whose settlement still
+          exists (undo it with the settlement delete). The entry that created the
+          asset can never be reverted.
+        type: boolean
       changedAt:
+        type: string
+      id:
         type: string
       newValue:
         type: string
@@ -5282,6 +5290,55 @@ paths:
       - BearerAuth: []
       summary: 'Reverse a settlement: the wallet effect is undone and the asset''s
         value goes back up'
+      tags:
+      - manual-assets
+  /spaces/{spaceId}/manual-assets/{id}/value-changes/{changeId}:
+    delete:
+      description: 'Sets the value back to the entry''s previous value, removes the
+        entry and answers the asset (with its history). Only the newest entry can
+        be reverted (409 VALUE_CHANGED_SINCE otherwise): value changes are plain overwrites
+        and a later change stores its own previous value. A settlement entry answers
+        409 USE_SETTLEMENT_DELETE with `details.transactionId`; send that to DELETE
+        .../settlements/{txnId}. The entry that created the asset answers 422 CANNOT_REVERT_INITIAL_VALUE.
+        `history[].canRevert` says which entries can be reverted.'
+      parameters:
+      - description: Space ID
+        in: path
+        name: spaceId
+        required: true
+        type: string
+      - description: Asset ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Value change ID (history[].id)
+        in: path
+        name: changeId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/manualassets.AssetDTO'
+        "404":
+          description: MANUAL_ASSET_NOT_FOUND, VALUE_CHANGE_NOT_FOUND
+          schema:
+            $ref: '#/definitions/httpx.ErrorEnvelope'
+        "409":
+          description: VALUE_CHANGED_SINCE, USE_SETTLEMENT_DELETE
+          schema:
+            $ref: '#/definitions/httpx.ErrorEnvelope'
+        "422":
+          description: CANNOT_REVERT_INITIAL_VALUE
+          schema:
+            $ref: '#/definitions/httpx.ErrorEnvelope'
+      security:
+      - BearerAuth: []
+      summary: Undo the newest value change of an asset
       tags:
       - manual-assets
   /spaces/{spaceId}/members:

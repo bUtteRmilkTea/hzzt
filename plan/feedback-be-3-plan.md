@@ -188,7 +188,7 @@ Create and patch without the fields; create and patch **with** the old fields st
 - [x] Phase P: remove expected yearly change and staked quantity
 - [x] Phase M: one exchange or broker field
 - [x] Phase N: trade history per investment, delete with replay
-- [ ] Phase O: manual asset value change revert
+- [x] Phase O: manual asset value change revert
 - [ ] Phase Q: mutual fund valuations and monthly PnL
 
 | Phase | Branch | Depends on | Size |
@@ -276,3 +276,7 @@ Two corrections to section 3 found while building it (neither changes D-B9):
 - **Only the trades after the deleted one are replayed**, starting from that trade's own `position_before`, instead of from the opening position of the whole history. The result is the same, and a manual position edit made before the deleted trade does not matter. A manual edit made after it (the snapshots stop forming an unbroken run up to the current position) still answers 409 `POSITION_CHANGED_SINCE`, and the list reports it in `blockedReason`.
 
 Other notes: the delete endpoint stays `DELETE /spaces/{spaceId}/transfers/{id}` (the transactions delete answers `USE_SPECIFIC_ENDPOINT` for trades); `UpdateTrade` is unchanged (still latest only, as the plan says); a shared-in viewer can read the history (wallet hidden) but is not a member of the owner's space, so a delete attempt answers 404 before it can reach `OWNER_ONLY`; `GET /transactions` also accepts `investmentIds`. The old index `transactions_investment_idx` was replaced by `transactions_investment_occurred_idx` (EXPLAIN uses it with no sort step). Tests: unit table tests and a 200 run property test for `ReplayPositions`, e2e for list/paging, replay equal to a fresh twin investment, refusal with 422, double delete 404, funding BUY, deleted wallet, ID stock lots, hand edited position and the shared viewer. The migration ran up, down, up on a scratch copy of the dev database.
+
+## 16. Phase O implementation note (Nov 24, 2026)
+
+Phase O done on `feat/manual-asset-revert` (O-T1 to O-T4 all done; no migration; stacked on the Phase N branch because all phases tick this plan file). `history[]` entries now carry `id` and `canRevert`, and `DELETE /spaces/{spaceId}/manual-assets/{id}/value-changes/{changeId}` reverts the newest change. Details beyond the plan text: `canRevert` is true for the newest manual change and for a settlement entry whose settlement still exists; the entry that created the asset (the oldest) is never revertible and answers 422 `CANNOT_REVERT_INITIAL_VALUE` (without it the asset would be left with no history); a settlement entry answers 409 `USE_SETTLEMENT_DELETE` with `details.transactionId` (null when the settlement was already deleted: the entry the settlement delete itself writes is not revertible); an unknown change id answers 404 `VALUE_CHANGE_NOT_FOUND`; a deleted asset answers 404 `MANUAL_ASSET_NOT_FOUND`. Settlement delete behaviour is unchanged.

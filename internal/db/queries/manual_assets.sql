@@ -44,5 +44,14 @@ VALUES ($1, $2, $3, $4, sqlc.narg('transaction_id'));
 -- name: ListValueChanges :many
 SELECT * FROM manual_asset_value_changes WHERE asset_id = $1 ORDER BY changed_at DESC, id DESC;
 
+-- name: GetValueChange :one
+SELECT * FROM manual_asset_value_changes WHERE id = $1 AND asset_id = $2;
+
+-- name: NewestValueChange :one
+SELECT * FROM manual_asset_value_changes WHERE asset_id = $1 ORDER BY changed_at DESC, id DESC LIMIT 1;
+
+-- name: DeleteValueChange :exec
+DELETE FROM manual_asset_value_changes WHERE id = $1 AND asset_id = $2;
+
 -- name: ManualAssetHasSettlements :one
 SELECT EXISTS (SELECT 1 FROM transactions WHERE manual_asset_id = $1);

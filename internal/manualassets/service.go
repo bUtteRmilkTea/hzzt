@@ -41,6 +41,10 @@ const (
 	CodeSettlementNotSupport = "SETTLEMENT_NOT_SUPPORTED"
 	CodeSettlementCurrency   = "SETTLEMENT_CURRENCY_MISMATCH"
 	CodeAssetCurrencyLocked  = "MANUAL_ASSET_CURRENCY_LOCKED"
+	CodeValueChangeNotFound  = "VALUE_CHANGE_NOT_FOUND"
+	CodeValueChangedSince    = "VALUE_CHANGED_SINCE"
+	CodeUseSettlementDelete  = "USE_SETTLEMENT_DELETE"
+	CodeCannotRevertInitial  = "CANNOT_REVERT_INITIAL_VALUE"
 	codeWalletNotFound       = "WALLET_NOT_FOUND"
 	maxValue                 = 20 // digits before the decimal point (numeric(28,8))
 )
@@ -398,4 +402,58 @@ func (s *Service) DeleteSettlement(ctx context.Context, spaceID, assetID, txnID 
 			AssetID: a.ID, PreviousValue: a.CurrentValue, NewValue: next, Reason: ReasonSettlement,
 		})
 	})
+}
+
+// RevertValueChange undoes the newest value change of an asset: the value goes back to the change's previous value and the
+// entry is removed, in one database transaction with the asset locked. Only the newest can go (a value change is a plain
+// overwrite and a later one stores its own previous value), otherwise 409 VALUE_CHANGED_SINCE. A settlement entry answers
+// 409 USE_SETTLEMENT_DELETE carrying the settlement's transaction id (details.transactionId) for the settlement delete, and
+// the entry that created the asset answers 422 CANNOT_REVERT_INITIAL_VALUE.
+func (s *Service) RevertValueChange(ctx context.Context, spaceID, assetID, changeID uuid.UUID) (Asset, error) {
+	err := db.WithTx(ctx, s.db, func(tx pgx.Tx) error {
+		q := s.q.WithTx(tx)
+		a, err := q.GetManualAssetForUpdate(ctx, sqlc.GetManualAssetForUpdateParams{ID: assetID, SpaceID: spaceID})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errAssetNF
+		}
+		if err != nil {
+			return err
+		}
+		c, err := q.GetValueChange(ctx, sqlc.GetValueChangeParams{ID: changeID, AssetID: assetID})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return apperror.New(404, CodeValueChangeNotFound, "Value change not found")
+		}
+		if err != nil {
+			return err
+		}
+		if c.Reason == ReasonSettlement {
+			e := apperror.Conflict(CodeUseSettlementDelete, "This entry belongs to a settlement: delete the settlement instead")
+			if c.TransactionID.Valid {
+				return e.WithDetails(map[string]any{"transactionId": c.TransactionID.UUID.String()})
+			}
+			return e.WithDetails(map[string]any{"transactionId": nil})
+		}
+		newest, err := q.NewestValueChange(ctx, assetID)
+		if err != nil {
+			return err
+		}
+		if newest.ID != c.ID {
+			return apperror.Conflict(CodeValueChangedSince, "The value changed again after this entry; revert the newer ones first")
+		}
+		history, err := q.ListValueChanges(ctx, assetID)
+		if err != nil {
+			return err
+		}
+		if len(history) == 1 {
+			return apperror.Unprocessable(CodeCannotRevertInitial, "The first value of an asset cannot be reverted; delete the asset instead")
+		}
+		if err := q.SetManualAssetValue(ctx, sqlc.SetManualAssetValueParams{ID: a.ID, CurrentValue: c.PreviousValue}); err != nil {
+			return err
+		}
+		return q.DeleteValueChange(ctx, sqlc.DeleteValueChangeParams{ID: c.ID, AssetID: assetID})
+	})
+	if err != nil {
+		return Asset{}, err
+	}
+	return s.Get(ctx, spaceID, assetID)
 }

@@ -104,7 +104,6 @@ var Metas = []TypeMeta{
 		AssetType: TypeCrypto, Label: "Crypto", QuoteCurrency: sp("USD"), SupportsAutoPrice: true,
 		QuantityMode: QuantityUnits, QuantityScale: 8, SymbolRequired: true, DefaultIcon: "🪙",
 		DetailFields: []FieldMeta{
-			{Name: "exchangeOrWallet", Label: "Exchange or wallet", Kind: "TEXT"},
 			{Name: "network", Label: "Network", Kind: "TEXT"},
 		},
 	},
@@ -112,7 +111,6 @@ var Metas = []TypeMeta{
 		AssetType: TypeIDStock, Label: "Indonesian stock", QuoteCurrency: sp("IDR"), SupportsAutoPrice: false,
 		QuantityMode: QuantityLots, QuantityScale: 0, LotSize: ip(LotSize), SymbolRequired: true, DefaultIcon: "🇮🇩",
 		DetailFields: []FieldMeta{
-			{Name: "broker", Label: "Broker", Kind: "TEXT"},
 			{Name: "lots", Label: "Lots (up to 1 decimal)", Kind: "DECIMAL", Required: true},
 		},
 	},
@@ -120,8 +118,7 @@ var Metas = []TypeMeta{
 		AssetType: TypeUSStock, Label: "US stock", QuoteCurrency: sp("USD"), SupportsAutoPrice: true,
 		QuantityMode: QuantityUnits, QuantityScale: 1, SymbolRequired: true, DefaultIcon: "🇺🇸",
 		DetailFields: []FieldMeta{
-			{Name: "exchange", Label: "Exchange", Kind: "TEXT", Required: true},
-			{Name: "platform", Label: "Platform", Kind: "TEXT"},
+			{Name: "exchange", Label: "Listing exchange", Kind: "TEXT", Required: true},
 		},
 	},
 	{
@@ -137,8 +134,7 @@ var Metas = []TypeMeta{
 		AssetType: TypeGlobalETF, Label: "Global ETF", QuoteCurrency: sp("USD"), SupportsAutoPrice: true,
 		QuantityMode: QuantityUnits, QuantityScale: quantityScale, SymbolRequired: true, DefaultIcon: "🌐",
 		DetailFields: []FieldMeta{
-			{Name: "exchange", Label: "Exchange", Kind: "TEXT", Required: true},
-			{Name: "platform", Label: "Platform", Kind: "TEXT"},
+			{Name: "exchange", Label: "Listing exchange", Kind: "TEXT", Required: true},
 			{Name: "expenseRatioPct", Label: "Expense ratio (%)", Kind: "DECIMAL"},
 			{Name: "assetClass", Label: "Asset class", Kind: "TEXT"},
 		},

@@ -783,9 +783,11 @@ definitions:
       symbol:
         type: string
       wrapper:
-        description: Wrapper is the exchange, broker or platform holding the position
-          (1 to 60 characters). When omitted it is derived from details (exchangeOrWallet,
-          broker or platform).
+        description: 'Wrapper is the exchange, broker or platform holding the position
+          (1 to 60 characters). This is the only field for it. An old client may still
+          send details.exchangeOrWallet, details.broker or details.platform: they
+          are accepted for one release and mapped into the wrapper when it is omitted,
+          but never stored or returned.'
         example: Binance
         type: string
     type: object
@@ -1057,7 +1059,7 @@ definitions:
         type: string
       wrapper:
         description: Wrapper sets the exchange, broker or platform holding the position;
-          null re-derives it from details.
+          null clears it.
         type: string
     type: object
   investments.RealizedPLDTO:

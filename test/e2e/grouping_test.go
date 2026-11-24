@@ -61,7 +61,7 @@ func TestInvestmentWrapperColumn(t *testing.T) {
 	s := NewTestServer(t)
 	e := newInvEnv(s)
 
-	t.Run("derived from details when not sent", func(t *testing.T) {
+	t.Run("an old client sending the broker in details still sets the wrapper", func(t *testing.T) {
 		assert.Equal(t, "Binance", *e.must(crypto("Bitcoin", "  Binance ", "1", "100")).Wrapper)
 		idx := e.must(map[string]any{"assetType": "ID_STOCK", "name": "BCA", "symbol": "BBCA", "avgBuyPrice": "9000", "manualPrice": "9500",
 			"details": map[string]any{"broker": "Stockbit", "lots": 1}})
@@ -84,7 +84,7 @@ func TestInvestmentWrapperColumn(t *testing.T) {
 		assert.Equal(t, "VALIDATION_FAILED", errCode(t, res))
 	})
 
-	t.Run("patch: set, follow details, null re-derives, trades keep it", func(t *testing.T) {
+	t.Run("patch: set, old details key maps to it, null clears it, trades keep it", func(t *testing.T) {
 		c := e.must(crypto("Solana", "Kraken", "2", "50"))
 		require.Equal(t, "Kraken", *c.Wrapper)
 		res := e.patch(c.ID, map[string]any{"wrapper": "Cold storage"})
@@ -93,10 +93,11 @@ func TestInvestmentWrapperColumn(t *testing.T) {
 		e.patch(c.ID, map[string]any{"name": "Solana 2"})
 		assert.Equal(t, "Cold storage", *e.get(c.ID).Wrapper, "an unrelated edit keeps it")
 		e.patch(c.ID, map[string]any{"details": map[string]any{"exchangeOrWallet": "Coinbase"}})
-		assert.Equal(t, "Coinbase", *e.get(c.ID).Wrapper, "a changed exchange in details moves the wrapper")
+		assert.Equal(t, "Coinbase", *e.get(c.ID).Wrapper, "an old client sending the exchange in details still sets the wrapper")
 		e.patch(c.ID, map[string]any{"wrapper": "Cold storage"})
 		e.patch(c.ID, map[string]any{"wrapper": nil})
-		assert.Equal(t, "Coinbase", *e.get(c.ID).Wrapper, "null re-derives from details")
+		assert.Nil(t, e.get(c.ID).Wrapper, "null clears it (the details no longer hold a broker)")
+		e.patch(c.ID, map[string]any{"wrapper": "Coinbase"})
 
 		w := s.newWallet(e.u, e.sid, map[string]any{"type": "BANK", "name": "Cash", "icon": "x", "currency": "USD", "initialBalance": "1000"})
 		res = s.Do(http.MethodPost, trURL(e.sid), map[string]any{"from": walletEnd(w), "to": leg(c.ID, "1", "10", "")}, bearer(e.u.AccessToken))

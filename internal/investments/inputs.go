@@ -165,7 +165,7 @@ func parseStoredDetails(assetType string, raw []byte) (any, error) {
 		}
 	}
 	out, _ := clearRemoved(deref(d)) // old rows may still hold removed keys: never carry them forward
-	return out, nil
+	return stripWrapperKeys(out), nil
 }
 
 // --- shared fields ---------------------------------------------------------------
@@ -178,7 +178,7 @@ type base struct {
 	Symbol        *string `json:"symbol"`
 	Icon          *string `json:"icon"`
 	QuoteCurrency *string `json:"quoteCurrency"`
-	// Wrapper is the exchange, broker or platform holding the position (1 to 60 characters). When omitted it is derived from details (exchangeOrWallet, broker or platform).
+	// Wrapper is the exchange, broker or platform holding the position (1 to 60 characters). This is the only field for it. An old client may still send details.exchangeOrWallet, details.broker or details.platform: they are accepted for one release and mapped into the wrapper when it is omitted, but never stored or returned.
 	Wrapper            *string          `json:"wrapper" example:"Binance"`
 	AvgBuyPrice        *decimal.Decimal `json:"avgBuyPrice" swaggertype:"string" example:"9200"`
 	ManualPrice        *decimal.Decimal `json:"manualPrice" swaggertype:"string" example:"9500"`
@@ -501,6 +501,7 @@ func finalize(s Spec, f map[string]any) (Spec, error) {
 	if s.Wrapper == nil {
 		s.Wrapper = DetailsWrapper(s.Details)
 	}
+	s.Details = stripWrapperKeys(s.Details) // the wrapper is the only place a broker or exchange is kept
 	meta, _ := MetaFor(s.AssetType)
 	if meta.SymbolRequired && s.Symbol == nil {
 		f["symbol"] = "is required for " + s.AssetType
@@ -571,7 +572,7 @@ type PatchInput struct {
 	// Deprecated: remove next release.
 	EstimatedAnnualChangePct json.RawMessage `json:"estimatedAnnualChangePct,omitempty" swaggerignore:"true"`
 	ManualFxRate             nullDec         `json:"manualFxRate" swaggertype:"string"`
-	// Wrapper sets the exchange, broker or platform holding the position; null re-derives it from details.
+	// Wrapper sets the exchange, broker or platform holding the position; null clears it.
 	Wrapper nullStr `json:"wrapper" swaggertype:"string"`
 	// InstrumentID relinks an auto-priced investment to an instrument picked from search.
 	InstrumentID *uuid.UUID      `json:"instrumentId" swaggertype:"string"`
@@ -679,8 +680,8 @@ func (p PatchInput) apply(inv sqlc.Investment, baseCurrency string) (Spec, error
 				return Spec{}, err
 			}
 		} else {
-			if !p.Wrapper.Set && !equalPtr(DetailsWrapper(s.Details), DetailsWrapper(d)) {
-				s.Wrapper = nil // the broker/exchange in details changed: follow it
+			if w := DetailsWrapper(d); !p.Wrapper.Set && w != nil {
+				s.Wrapper = w // an old client sent the broker or exchange in details: it becomes the wrapper
 			}
 			s.Details = d
 		}
@@ -698,13 +699,6 @@ func DetailsJSON(d any) (json.RawMessage, error) {
 		return nil, err
 	}
 	return b, nil
-}
-
-func equalPtr(a, b *string) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-	return *a == *b
 }
 
 // noteIgnoredFields logs the use of a request field that was removed and is only accepted for one release (old clients).
@@ -730,4 +724,24 @@ func clearRemoved(d any) (any, bool) {
 		return c, true
 	}
 	return d, false
+}
+
+// stripWrapperKeys clears exchangeOrWallet, broker and platform from details. They are still accepted on write for
+// one release (an old client) and mapped into the wrapper, but are never stored or returned.
+func stripWrapperKeys(d any) any {
+	switch v := d.(type) {
+	case cryptoDetails:
+		v.ExchangeOrWallet = nil
+		return v
+	case idStockDetails:
+		v.Broker = nil
+		return v
+	case usStockDetails:
+		v.Platform = nil
+		return v
+	case globalETFDetails:
+		v.Platform = nil
+		return v
+	}
+	return d
 }

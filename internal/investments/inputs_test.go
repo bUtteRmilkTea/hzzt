@@ -48,7 +48,8 @@ func TestCreateIDStockDerivesQuantityFromLots(t *testing.T) {
 	assert.Equal(t, "BBCA", *s.Symbol)
 	assert.Equal(t, PriceModeManual, s.PriceMode)
 	assert.Equal(t, "🇮🇩", s.Icon)
-	assert.Equal(t, idStockDetails{Broker: strp("Stockbit"), Lots: jnp("2")}, s.Details)
+	assert.Equal(t, idStockDetails{Lots: jnp("2")}, s.Details, "the broker moves to the wrapper and is not kept in details")
+	assert.Equal(t, "Stockbit", *s.Wrapper)
 
 	s, err = decodeCreate(t, `{"assetType":"ID_STOCK","name":"X","symbol":"X","details":{"lots":0}}`)
 	require.NoError(t, err)

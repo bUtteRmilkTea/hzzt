@@ -216,7 +216,8 @@ func TestCreateEachInvestmentType(t *testing.T) {
 		assert.Equal(t, "BBCA", *got.Symbol)
 		assert.Equal(t, "MANUAL", got.PriceMode)
 		assert.EqualValues(t, 2, got.Details["lots"])
-		assert.Equal(t, "Stockbit", got.Details["broker"])
+		assert.Equal(t, "Stockbit", *got.Wrapper, "the old details.broker becomes the wrapper")
+		assert.NotContains(t, got.Details, "broker")
 		assert.False(t, got.IsShared)
 		assert.Nil(t, got.InstrumentID)
 		// valuation: 200 × 9500 = 1,900,000; cost 200 × 9200 + 5000 = 1,845,000
@@ -445,7 +446,8 @@ func TestInvestmentUpdateAndDelete(t *testing.T) {
 		var got investmentBody
 		res.JSON(t, &got)
 		assert.True(t, dec("500").Equal(dec(got.Quantity)))
-		assert.Equal(t, "IPOT", got.Details["broker"])
+		assert.Equal(t, "IPOT", *got.Wrapper)
+		assert.NotContains(t, got.Details, "broker")
 		// quantity itself cannot be set for lot-based types
 		assert.Equal(t, http.StatusBadRequest, e.patch(stock.ID, map[string]any{"quantity": "100"}).Status)
 	})

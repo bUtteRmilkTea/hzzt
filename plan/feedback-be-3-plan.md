@@ -186,7 +186,7 @@ Create and patch without the fields; create and patch **with** the old fields st
 **Progress** (ticked when the phase's branch passes lint/tests and is pushed with a PR):
 - [x] Phase L: refresh 15 minutes, symbol check, grouped wrapper PnL
 - [x] Phase P: remove expected yearly change and staked quantity
-- [ ] Phase M: one exchange or broker field
+- [x] Phase M: one exchange or broker field
 - [ ] Phase N: trade history per investment, delete with replay
 - [ ] Phase O: manual asset value change revert
 - [ ] Phase Q: mutual fund valuations and monthly PnL
@@ -262,3 +262,7 @@ Dry run on `development` at b7d39f1 (= origin/development, no unmerged branches)
 ## 13. Phase P implementation note (Nov 24, 2026)
 
 Phase P done on `feat/drop-estimated-change-staked` (P-T1 to P-T8 all done; branched from the Phase L branch only because that branch carries this plan file). The real migration numbers are 00021 (drop `estimated_annual_change_pct` on both tables, prints counts) and 00022 (strip `stakedQuantity`, prints the list). Dev data counts before the migration: 13 investments and 0 manual assets with an estimated change, 0 investments with `stakedQuantity`. Both migrations ran up, down, up on a scratch copy of the dev database. Old request fields are accepted and ignored (`estimatedAnnualChangePct` on investments and manual assets, `details.stakedQuantity` on crypto) with a warning log line, never stored or returned. `Position.Sell` lost its `staked` argument. A source scan test (`TestRemovedFieldsDoNotComeBack`) fails if the identifiers return outside the tolerant fields. Appendix B of `plan/plan.md` was adjusted.
+
+## 14. Phase M implementation note (Nov 24, 2026)
+
+Phase M done on `feat/single-wrapper-field` (M-T1 to M-T6 all done; stacked on the Phase P branch because both edit this plan file). Migration number is 00023 (`00023_details_wrapper_fold.sql`). Metadata no longer lists `exchangeOrWallet`, `broker`, `platform`; US stock and ETF `exchange` is labelled "Listing exchange" and stays required. The three keys are still accepted on write and mapped into `wrapper` when it is empty, and are never stored or returned (also stripped when old rows are read). A PATCH that sends one of them in details sets the wrapper from it (an explicit `wrapper` wins); `wrapper: null` now clears the wrapper (it can no longer be re-derived because details do not keep the key). The migration ran up, down, up on a scratch copy of the dev database (dev: 5 rows had one of the keys, 0 after). The removal of the three keys from the request structs (end of the one release) is a follow-up.

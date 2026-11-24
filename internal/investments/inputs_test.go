@@ -388,3 +388,14 @@ func TestTradeQuantityLimits(t *testing.T) {
 	assert.False(t, ok(TypeIDStock, "55"), "0.55 lot is two decimals")
 	assert.False(t, ok(TypeIDStock, "50.5"), "shares are whole")
 }
+
+func TestCleanSymbolUpperCasesAndTrims(t *testing.T) {
+	f := map[string]any{}
+	for _, in := range []string{"btc", "BTC", " Btc "} {
+		in := in
+		got := cleanSymbol(f, &in)
+		require.NotNil(t, got)
+		assert.Equal(t, "BTC", *got)
+	}
+	assert.Empty(t, f)
+}

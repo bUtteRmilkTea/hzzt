@@ -16,6 +16,7 @@ import (
 
 	"github.com/JonathanRainee/hzzt/internal/auth"
 	"github.com/JonathanRainee/hzzt/internal/currency"
+	"github.com/JonathanRainee/hzzt/internal/db/sqlc"
 	"github.com/JonathanRainee/hzzt/internal/platform/apperror"
 	"github.com/JonathanRainee/hzzt/internal/platform/httpx"
 	"github.com/JonathanRainee/hzzt/internal/platform/money"
@@ -49,6 +50,7 @@ func (h *Handler) Mount(r chi.Router) {
 		r.Delete(p+"/{id}", h.delete)
 		r.Post(p+"/{id}/settlements", h.settle)
 		r.Delete(p+"/{id}/settlements/{txnId}", h.deleteSettlement)
+		r.Delete(p+"/{id}/value-changes/{changeId}", h.revertValueChange)
 	})
 }
 
@@ -56,6 +58,9 @@ func (h *Handler) Mount(r chi.Router) {
 
 // ValueChangeDTO is one entry of an asset's value history.
 type ValueChangeDTO struct {
+	ID uuid.UUID `json:"id"`
+	// CanRevert is true for the newest value change (undo it with DELETE .../value-changes/{id}) and for a settlement entry whose settlement still exists (undo it with the settlement delete). The entry that created the asset can never be reverted.
+	CanRevert     bool         `json:"canRevert"`
 	PreviousValue money.Amount `json:"previousValue" swaggertype:"string"`
 	NewValue      money.Amount `json:"newValue" swaggertype:"string"`
 	Reason        string       `json:"reason" enums:"MANUAL,SETTLEMENT"`
@@ -88,8 +93,8 @@ func toDTO(a Asset) AssetDTO {
 		s := a.DueDate.Format("2006-01-02")
 		d.DueDate = &s
 	}
-	for _, h := range a.History {
-		c := ValueChangeDTO{PreviousValue: money.NewAmount(h.PreviousValue, a.Currency), NewValue: money.NewAmount(h.NewValue, a.Currency), Reason: h.Reason, ChangedAt: h.ChangedAt.UTC()}
+	for i, h := range a.History {
+		c := ValueChangeDTO{ID: h.ID, CanRevert: canRevert(a.History, i), PreviousValue: money.NewAmount(h.PreviousValue, a.Currency), NewValue: money.NewAmount(h.NewValue, a.Currency), Reason: h.Reason, ChangedAt: h.ChangedAt.UTC()}
 		if h.TransactionID.Valid {
 			id := h.TransactionID.UUID
 			c.TransactionID = &id
@@ -97,6 +102,16 @@ func toDTO(a Asset) AssetDTO {
 		d.History = append(d.History, c)
 	}
 	return d
+}
+
+// canRevert says whether history[i] (newest first) can be undone: the newest manual change, or a settlement entry that still
+// has its settlement. The oldest manual entry is the creation of the asset.
+func canRevert(history []sqlc.ManualAssetValueChange, i int) bool {
+	h := history[i]
+	if h.Reason == ReasonSettlement {
+		return h.TransactionID.Valid
+	}
+	return i == 0 && i != len(history)-1
 }
 
 // ListResponse lists assets with their converted totals per kind.
@@ -521,4 +536,39 @@ func (h *Handler) deleteSettlement(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// revertValueChange godoc
+//
+//	@Summary		Undo the newest value change of an asset
+//	@Description	Sets the value back to the entry's previous value, removes the entry and answers the asset (with its history). Only the newest entry can be reverted (409 VALUE_CHANGED_SINCE otherwise): value changes are plain overwrites and a later change stores its own previous value. A settlement entry answers 409 USE_SETTLEMENT_DELETE with `details.transactionId`; send that to DELETE .../settlements/{txnId}. The entry that created the asset answers 422 CANNOT_REVERT_INITIAL_VALUE. `history[].canRevert` says which entries can be reverted.
+//	@Tags			manual-assets
+//	@Security		BearerAuth
+//	@Produce		json
+//	@Param			spaceId		path		string	true	"Space ID"
+//	@Param			id			path		string	true	"Asset ID"
+//	@Param			changeId	path		string	true	"Value change ID (history[].id)"
+//	@Success		200			{object}	AssetDTO
+//	@Failure		404			{object}	httpx.ErrorEnvelope	"MANUAL_ASSET_NOT_FOUND, VALUE_CHANGE_NOT_FOUND"
+//	@Failure		409			{object}	httpx.ErrorEnvelope	"VALUE_CHANGED_SINCE, USE_SETTLEMENT_DELETE"
+//	@Failure		422			{object}	httpx.ErrorEnvelope	"CANNOT_REVERT_INITIAL_VALUE"
+//	@Router			/spaces/{spaceId}/manual-assets/{id}/value-changes/{changeId} [delete]
+func (h *Handler) revertValueChange(w http.ResponseWriter, r *http.Request) {
+	aid, err := assetID(r)
+	var cid uuid.UUID
+	if err == nil {
+		cid, err = uuid.Parse(chi.URLParam(r, "changeId"))
+		if err != nil {
+			err = apperror.New(http.StatusNotFound, CodeValueChangeNotFound, "Value change not found")
+		}
+	}
+	var a Asset
+	if err == nil {
+		a, err = h.svc.RevertValueChange(r.Context(), spaces.SpaceIDFromContext(r.Context()), aid, cid)
+	}
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toDTO(a))
 }

@@ -24,6 +24,8 @@ type assetBody struct {
 	DueDate          *string `json:"dueDate"`
 	Note             *string `json:"note"`
 	History          []struct {
+		ID            string  `json:"id"`
+		CanRevert     bool    `json:"canRevert"`
 		PreviousValue string  `json:"previousValue"`
 		NewValue      string  `json:"newValue"`
 		Reason        string  `json:"reason"`

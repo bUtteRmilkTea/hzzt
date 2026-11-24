@@ -67,6 +67,20 @@ func (q *Queries) CreateManualAsset(ctx context.Context, arg CreateManualAssetPa
 	return i, err
 }
 
+const deleteValueChange = `-- name: DeleteValueChange :exec
+DELETE FROM manual_asset_value_changes WHERE id = $1 AND asset_id = $2
+`
+
+type DeleteValueChangeParams struct {
+	ID      uuid.UUID `json:"id"`
+	AssetID uuid.UUID `json:"asset_id"`
+}
+
+func (q *Queries) DeleteValueChange(ctx context.Context, arg DeleteValueChangeParams) error {
+	_, err := q.db.Exec(ctx, deleteValueChange, arg.ID, arg.AssetID)
+	return err
+}
+
 const getManualAsset = `-- name: GetManualAsset :one
 SELECT id, space_id, kind, name, icon, currency, current_value, counterparty_name, due_date, note, created_by_id, created_at, updated_at, deleted_at FROM manual_assets WHERE id = $1 AND space_id = $2 AND deleted_at IS NULL
 `
@@ -157,6 +171,30 @@ func (q *Queries) GetManualAssetForUpdate(ctx context.Context, arg GetManualAsse
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const getValueChange = `-- name: GetValueChange :one
+SELECT id, asset_id, previous_value, new_value, reason, transaction_id, changed_at FROM manual_asset_value_changes WHERE id = $1 AND asset_id = $2
+`
+
+type GetValueChangeParams struct {
+	ID      uuid.UUID `json:"id"`
+	AssetID uuid.UUID `json:"asset_id"`
+}
+
+func (q *Queries) GetValueChange(ctx context.Context, arg GetValueChangeParams) (ManualAssetValueChange, error) {
+	row := q.db.QueryRow(ctx, getValueChange, arg.ID, arg.AssetID)
+	var i ManualAssetValueChange
+	err := row.Scan(
+		&i.ID,
+		&i.AssetID,
+		&i.PreviousValue,
+		&i.NewValue,
+		&i.Reason,
+		&i.TransactionID,
+		&i.ChangedAt,
 	)
 	return i, err
 }
@@ -273,6 +311,25 @@ func (q *Queries) ManualAssetHasSettlements(ctx context.Context, manualAssetID u
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const newestValueChange = `-- name: NewestValueChange :one
+SELECT id, asset_id, previous_value, new_value, reason, transaction_id, changed_at FROM manual_asset_value_changes WHERE asset_id = $1 ORDER BY changed_at DESC, id DESC LIMIT 1
+`
+
+func (q *Queries) NewestValueChange(ctx context.Context, assetID uuid.UUID) (ManualAssetValueChange, error) {
+	row := q.db.QueryRow(ctx, newestValueChange, assetID)
+	var i ManualAssetValueChange
+	err := row.Scan(
+		&i.ID,
+		&i.AssetID,
+		&i.PreviousValue,
+		&i.NewValue,
+		&i.Reason,
+		&i.TransactionID,
+		&i.ChangedAt,
+	)
+	return i, err
 }
 
 const setManualAssetValue = `-- name: SetManualAssetValue :exec

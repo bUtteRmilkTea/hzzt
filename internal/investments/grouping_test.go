@@ -127,3 +127,37 @@ func TestWrapperNormalizationAndDerivation(t *testing.T) {
 	assert.Nil(t, DetailsWrapper(globalETFDetails{Exchange: "NYSE", Platform: strp("  ")}))
 	assert.Nil(t, DetailsWrapper(mutualFundDetails{FundManager: strp("Manulife"), FundType: "EQUITY"}))
 }
+
+func TestGroupWrapperPnlAddsUpToTheCategoryAndTotal(t *testing.T) {
+	mk := func(w *string, qty, avg, price string) Item {
+		i := inv(TypeUSStock, "USD", qty, avg, price, "0")
+		i.Wrapper = w
+		i.UpdatedAt = now
+		return Item{Investment: i, Valuation: Value(i, nil, ctx("USD", true, usdIDR, nil), now)}
+	}
+	items := []Item{
+		mk(strp("Robinhood"), "3", "10.01", "12.337"),
+		mk(strp("robinhood "), "7", "3.33", "2.111"),
+		mk(strp("IBKR"), "1", "100", "90.005"),
+		mk(nil, "2", "1.1", "1.7"),
+	}
+	g := Group("USD", items)
+	require.Len(t, g.Categories, 1)
+	cat := g.Categories[0]
+	pl, cost := decimal.Zero, decimal.Zero
+	for _, w := range cat.Wrappers {
+		pl = pl.Add(w.UnrealizedPL)
+		cost = cost.Add(w.Cost)
+		var itemPL decimal.Decimal
+		for _, it := range w.Items {
+			itemPL = itemPL.Add(it.Valuation.Base.UnrealizedPL)
+		}
+		assert.True(t, itemPL.Equal(w.UnrealizedPL), "wrapper pnl equals the sum of its items")
+		if !w.Cost.IsZero() {
+			require.NotNil(t, w.UnrealizedPLPct)
+		}
+	}
+	assert.True(t, pl.Equal(cat.UnrealizedPL))
+	assert.True(t, cost.Equal(cat.Cost))
+	assert.True(t, cat.UnrealizedPL.Equal(g.Total.UnrealizedPL))
+}

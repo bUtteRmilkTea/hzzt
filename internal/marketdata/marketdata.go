@@ -50,7 +50,17 @@ const (
 )
 
 // DefaultRefreshMinutes is how often crypto prices are refreshed (CMC_REFRESH_MINUTES).
-const DefaultRefreshMinutes = 10
+const DefaultRefreshMinutes = 15
+
+// CryptoStaleAfter is how old a crypto price may get before it is stale: two
+// missed refreshes, but never less than investments.StaleAfter (30 minutes).
+func CryptoStaleAfter(refreshMinutes int) time.Duration {
+	d := time.Duration(refreshMinutes) * 2 * time.Minute
+	if d < investments.StaleAfter {
+		return investments.StaleAfter
+	}
+	return d
+}
 
 const (
 	// searchRemoteBelow: below this many local hits a stock search also asks Massive.
@@ -539,6 +549,9 @@ func (s *Service) MarketPrices(ctx context.Context, ids []uuid.UUID) (map[uuid.U
 		mp := investments.MarketPrice{Price: r.Price, AsOf: r.AsOf}
 		if r.Provider == ProviderMassive && s.opts.Strategy != nil {
 			mp.StaleAfter = s.opts.Strategy.StaleAfter(now)
+		}
+		if r.Provider == ProviderCMC {
+			mp.StaleAfter = CryptoStaleAfter(s.opts.RefreshMinutes)
 		}
 		out[r.InstrumentID] = mp
 	}

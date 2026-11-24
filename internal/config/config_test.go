@@ -98,7 +98,7 @@ func TestFXProvider(t *testing.T) {
 func TestCMCRefreshMinutes(t *testing.T) {
 	c, err := LoadFrom(env(valid()))
 	require.NoError(t, err)
-	assert.Equal(t, 10, c.CMCRefreshMinutes)
+	assert.Equal(t, 15, c.CMCRefreshMinutes)
 
 	m := valid()
 	m["CMC_REFRESH_MINUTES"] = "30"

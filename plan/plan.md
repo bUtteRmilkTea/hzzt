@@ -746,7 +746,7 @@ Since the filter list and query are optional in any combination, the sqlc query 
 - Coin list: `GET /v1/cryptocurrency/map` → synced daily into `market_instruments` (top ~5,000 by rank) so search costs no credits.
 - Quotes: `GET /v2/cryptocurrency/quotes/latest?id=1,1027,...&convert=USD`, batched up to 100 ids per call.
 - Auth: header `X-CMC_PRO_API_KEY`, server-side only.
-- Budget: every 10 minutes ≈ 144 calls/day ≈ 4,300/month for up to 100 coins. Make this configurable with `CMC_REFRESH_MINUTES`.
+- Budget: every 15 minutes ≈ 96 calls/day ≈ 2,900/month for up to 100 coins (the default; it was 10 minutes, ≈ 4,300/month). Make this configurable with `CMC_REFRESH_MINUTES`.
 
 | Method | Path | Notes |
 |---|---|---|

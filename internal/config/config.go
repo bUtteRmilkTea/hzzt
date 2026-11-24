@@ -151,7 +151,7 @@ func LoadFrom(getenv func(string) string) (*Config, error) {
 	}
 
 	// CoinMarketCap refresh interval
-	c.CMCRefreshMinutes = 10
+	c.CMCRefreshMinutes = 15
 	if v := str("CMC_REFRESH_MINUTES", ""); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 1 || n > 1440 {

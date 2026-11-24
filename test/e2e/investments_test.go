@@ -18,6 +18,7 @@ type valuationBody struct {
 	PriceSource     string  `json:"priceSource"`
 	PriceAsOf       *string `json:"priceAsOf"`
 	IsStale         bool    `json:"isStale"`
+	NavAgeDays      *int    `json:"navAgeDays"`
 	MarketValue     string  `json:"marketValue"`
 	CostBasis       string  `json:"costBasis"`
 	UnrealizedPL    string  `json:"unrealizedPl"`

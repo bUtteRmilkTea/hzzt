@@ -64,6 +64,8 @@ type Valuation struct {
 	PriceSource string     `json:"priceSource" enums:"MARKET,MANUAL,MANUAL_VALUE"`
 	PriceAsOf   *time.Time `json:"priceAsOf"`
 	IsStale     bool       `json:"isStale"`
+	// NavAgeDays is how many days old the NAV is (today minus details.navDate); null for anything but a mutual fund and for a fund without a NAV date.
+	NavAgeDays *int `json:"navAgeDays"`
 
 	// Native figures, in the investment's quote currency.
 	MarketValue  decimal.Decimal `json:"marketValue" swaggertype:"string"`
@@ -166,6 +168,7 @@ func Value(inv sqlc.Investment, mp *MarketPrice, cc *currency.ConversionContext,
 		}
 	}
 	v.Price = price
+	v.NavAgeDays = navAgeDays(inv, now)
 
 	factor := decimal.NewFromInt(1)
 	marketValue := inv.Quantity.Mul(price)
@@ -287,4 +290,29 @@ func Summarize(baseCurrency string, vals []Valuation) Summary {
 	}
 	sort.SliceStable(s.Warnings, func(i, j int) bool { return s.Warnings[i].Message < s.Warnings[j].Message })
 	return s
+}
+
+// navAgeDays is the number of whole days between a mutual fund's NAV date and today (UTC); nil when it has none.
+func navAgeDays(inv sqlc.Investment, now time.Time) *int {
+	if inv.AssetType != TypeMutualFund {
+		return nil
+	}
+	d, err := parseStoredDetails(inv.AssetType, inv.Details)
+	if err != nil {
+		return nil
+	}
+	nav := d.(mutualFundDetails).NavDate
+	if nav == nil {
+		return nil
+	}
+	t, err := time.Parse(dateLayout, strings.TrimSpace(*nav))
+	if err != nil {
+		return nil
+	}
+	today := now.UTC().Truncate(24 * time.Hour)
+	days := int(today.Sub(t).Hours() / 24)
+	if days < 0 {
+		days = 0
+	}
+	return &days
 }

@@ -3467,6 +3467,206 @@
                 }
             }
         },
+        "/spaces/{spaceId}/investments/{id}/valuations": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Newest first. `pnl` = value − costBasis and `pnlPct` = pnl / costBasis × 100 (null when the cost is 0). `changeFromPrevious` is the market move since the previous valuation with the position change excluded: (nav − previous nav) × quantity, and (nav − previous nav) / previous nav × 100. Neither is an annual rate. `base` is a copy in the space base currency at the current rate (null without a rate). The list never invents missing months; `lastValuationAt` is the date of the newest one. Owner only (403 OWNER_ONLY); mutual funds only (422).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "investments"
+                ],
+                "summary": "Dated valuations of a mutual fund, with the PnL of each",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Space ID",
+                        "name": "spaceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Investment ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/investments.ValuationListResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "OWNER_ONLY",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "422": {
+                        "description": "VALUATIONS_NOT_SUPPORTED",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mutual funds only (422 VALUATIONS_NOT_SUPPORTED otherwise) and the owner only (403 OWNER_ONLY). One valuation per `asOf` date: sending the same date again replaces it (200, the old value is logged), so a typo is fixed by sending it again. The newest valuation is copied into the investment (`manualPrice` = nav, `details.navDate` = asOf) so every total keeps working; an older date only adds history. `manualCurrentValue` is never touched (if one is set it still wins). The quantity and cost basis of the position are snapshotted when it is typed, so a later BUY or SELL does not rewrite an earlier month. There is no reminder or job: the age of the NAV is `valuation.navAgeDays` on the investment.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "investments"
+                ],
+                "summary": "Record the NAV of a mutual fund on a date",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Space ID",
+                        "name": "spaceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Investment ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "The NAV and its date",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/investments.ValuationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Replaced the valuation of that date",
+                        "schema": {
+                            "$ref": "#/definitions/investments.ValuationDTO"
+                        }
+                    },
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/investments.ValuationDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "OWNER_ONLY",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "422": {
+                        "description": "VALUATIONS_NOT_SUPPORTED",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/spaces/{spaceId}/investments/{id}/valuations/{valuationId}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Removes the valuation. When it was the newest, the investment's `manualPrice` and `details.navDate` go back to the previous valuation. When it was the only one the investment keeps its NAV and `warnings` carries NAV_NOT_REVERTED. Deleting an older valuation only removes history. Owner only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "investments"
+                ],
+                "summary": "Delete one valuation of a mutual fund",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Space ID",
+                        "name": "spaceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Investment ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Valuation ID",
+                        "name": "valuationId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/investments.ValuationDeleteResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "OWNER_ONLY",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "VALUATION_NOT_FOUND, INVESTMENT_NOT_FOUND",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/spaces/{spaceId}/invitations": {
             "post": {
                 "security": [
@@ -7394,6 +7594,10 @@
                     "description": "Native figures, in the investment's quote currency.",
                     "type": "string"
                 },
+                "navAgeDays": {
+                    "description": "NavAgeDays is how many days old the NAV is (today minus details.navDate); null for anything but a mutual fund and for a fund without a NAV date.",
+                    "type": "integer"
+                },
                 "price": {
                     "type": "string"
                 },
@@ -7421,6 +7625,148 @@
                     "items": {
                         "$ref": "#/definitions/currency.Warning"
                     }
+                }
+            }
+        },
+        "investments.ValuationBaseDTO": {
+            "type": "object",
+            "properties": {
+                "changeFromPrevious": {
+                    "type": "string"
+                },
+                "costBasis": {
+                    "type": "string"
+                },
+                "currency": {
+                    "type": "string",
+                    "example": "IDR"
+                },
+                "fxRate": {
+                    "type": "string"
+                },
+                "pnl": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "investments.ValuationChangeDTO": {
+            "type": "object",
+            "properties": {
+                "pct": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "investments.ValuationDTO": {
+            "type": "object",
+            "properties": {
+                "asOf": {
+                    "type": "string",
+                    "example": "2026-10-31"
+                },
+                "base": {
+                    "$ref": "#/definitions/investments.ValuationBaseDTO"
+                },
+                "changeFromPrevious": {
+                    "description": "ChangeFromPrevious is null for the oldest valuation.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/investments.ValuationChangeDTO"
+                        }
+                    ]
+                },
+                "costBasis": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "isLatest": {
+                    "description": "IsLatest is true for the newest valuation, the one the investment uses as its current NAV.",
+                    "type": "boolean"
+                },
+                "nav": {
+                    "type": "string",
+                    "example": "1534.2"
+                },
+                "note": {
+                    "type": "string"
+                },
+                "pnl": {
+                    "description": "PnL is value − costBasis and PnLPct is PnL / costBasis × 100 (null when the cost is 0): profit since cost, not a yearly rate.",
+                    "type": "string"
+                },
+                "pnlPct": {
+                    "type": "string"
+                },
+                "quantity": {
+                    "description": "Quantity and CostBasis are the position when the valuation was typed.",
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "investments.ValuationDeleteResponse": {
+            "type": "object",
+            "properties": {
+                "warnings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/currency.Warning"
+                    }
+                }
+            }
+        },
+        "investments.ValuationListResponse": {
+            "type": "object",
+            "properties": {
+                "currency": {
+                    "type": "string",
+                    "example": "IDR"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/investments.ValuationDTO"
+                    }
+                },
+                "lastValuationAt": {
+                    "description": "LastValuationAt is the date of the newest valuation (null when there is none).",
+                    "type": "string",
+                    "example": "2026-10-31"
+                }
+            }
+        },
+        "investments.ValuationRequest": {
+            "type": "object",
+            "required": [
+                "asOf",
+                "nav"
+            ],
+            "properties": {
+                "asOf": {
+                    "description": "AsOf is the date of the NAV, not the day it is typed (YYYY-MM-DD, not in the future).",
+                    "type": "string",
+                    "example": "2026-10-31"
+                },
+                "nav": {
+                    "description": "NAV is the price per unit, as 1534.20 or 1,534.20.",
+                    "type": "string",
+                    "example": "1534.20"
+                },
+                "note": {
+                    "type": "string"
                 }
             }
         },

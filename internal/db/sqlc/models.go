@@ -109,6 +109,19 @@ type InvestmentShareChange struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
+type InvestmentValuation struct {
+	ID           uuid.UUID       `json:"id"`
+	InvestmentID uuid.UUID       `json:"investment_id"`
+	AsOf         time.Time       `json:"as_of"`
+	Nav          decimal.Decimal `json:"nav"`
+	Quantity     decimal.Decimal `json:"quantity"`
+	CostBasis    decimal.Decimal `json:"cost_basis"`
+	Value        decimal.Decimal `json:"value"`
+	Note         *string         `json:"note"`
+	CreatedByID  uuid.UUID       `json:"created_by_id"`
+	CreatedAt    time.Time       `json:"created_at"`
+}
+
 type InvestmentWrapperAllocation struct {
 	ID          uuid.UUID `json:"id"`
 	SpaceID     uuid.UUID `json:"space_id"`

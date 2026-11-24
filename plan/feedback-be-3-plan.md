@@ -189,7 +189,7 @@ Create and patch without the fields; create and patch **with** the old fields st
 - [x] Phase M: one exchange or broker field
 - [x] Phase N: trade history per investment, delete with replay
 - [x] Phase O: manual asset value change revert
-- [ ] Phase Q: mutual fund valuations and monthly PnL
+- [x] Phase Q: mutual fund valuations and monthly PnL
 
 | Phase | Branch | Depends on | Size |
 | --- | --- | --- | --- |
@@ -280,3 +280,9 @@ Other notes: the delete endpoint stays `DELETE /spaces/{spaceId}/transfers/{id}`
 ## 16. Phase O implementation note (Nov 24, 2026)
 
 Phase O done on `feat/manual-asset-revert` (O-T1 to O-T4 all done; no migration; stacked on the Phase N branch because all phases tick this plan file). `history[]` entries now carry `id` and `canRevert`, and `DELETE /spaces/{spaceId}/manual-assets/{id}/value-changes/{changeId}` reverts the newest change. Details beyond the plan text: `canRevert` is true for the newest manual change and for a settlement entry whose settlement still exists; the entry that created the asset (the oldest) is never revertible and answers 422 `CANNOT_REVERT_INITIAL_VALUE` (without it the asset would be left with no history); a settlement entry answers 409 `USE_SETTLEMENT_DELETE` with `details.transactionId` (null when the settlement was already deleted: the entry the settlement delete itself writes is not revertible); an unknown change id answers 404 `VALUE_CHANGE_NOT_FOUND`; a deleted asset answers 404 `MANUAL_ASSET_NOT_FOUND`. Settlement delete behaviour is unchanged.
+
+## 17. Phase Q implementation note (Nov 24, 2026)
+
+Phase Q done on `feat/mutual-fund-valuations` (Q-T1 to Q-T8 all done; stacked on the Phase O branch because all phases tick this plan file). Answers used: Q20 no reminder feature, Q23 NAV only. Migrations: 00025 (`investment_valuations`) and 00026 (backfill, prints the count); both ran up, down, up on a scratch copy of the dev database (dev has one mutual fund).
+
+Details beyond the plan text: valuations are owner only for read and write (403 `OWNER_ONLY` for a viewer of a shared fund, since the rows are not scaled to a share); POST answers 201 for a new date and 200 when it replaces one (the old NAV is logged), `asOf` may not be more than a day in the future, `nav` accepts `1534.20` and `1,534.20`, zero is allowed; the response of a POST/GET carries `isLatest` and the DELETE answers 200 with `warnings` (`NAV_NOT_REVERTED` when the only valuation was removed); the older-date POST snapshots the position as it is now (it cannot know the position of that date); `base` uses the current rate for every row; `valuation.navAgeDays` is whole days between `details.navDate` and today (UTC), null for other types or without a date; a valuation does not create itself when a fund is created, the backfill covers existing funds only. The equality of the totals (list summary, grouped, assets summary, net worth) after each step is tested.

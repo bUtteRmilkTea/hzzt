@@ -181,18 +181,24 @@ func TestBuyAndSellAcceptance(t *testing.T) {
 		expectLedgerConsistent(t, s, e.a.ID)
 	})
 
-	t.Run("editing an older BUY after a later SELL is refused with 409", func(t *testing.T) {
+	t.Run("editing an older BUY after a later SELL is refused with 409, deleting it replays the later trades", func(t *testing.T) {
 		later := e.mustTrade(e.sell(e.a, e.btc.ID, "0.1", "90000", ""))
 		for name, res := range map[string]Response{
-			"edit older BUY":   e.patchTrade(first.ID, map[string]any{"to": map[string]any{"type": "INVESTMENT", "quantity": "0.6"}}),
-			"delete older BUY": e.deleteTrade(first.ID),
-			"edit the middle":  e.patchTrade(second.ID, map[string]any{"note": "x"}),
+			"edit older BUY":  e.patchTrade(first.ID, map[string]any{"to": map[string]any{"type": "INVESTMENT", "quantity": "0.6"}}),
+			"edit the middle": e.patchTrade(second.ID, map[string]any{"note": "x"}),
 		} {
 			require.Equal(t, http.StatusConflict, res.Status, "%s: %s", name, res.Body)
 			assert.Equal(t, "POSITION_CHANGED_SINCE", errCode(t, res), name)
 		}
 		e.assertPosition(e.btc.ID, "0.9", "65000", "0")
 		assert.True(t, dec("35000").Add(dec("9000")).Equal(e.balance(e.a)), "a refused edit changes nothing")
+
+		// the older BUY can be deleted: the later trades are replayed on top (BUY 0.5 at 70000, SELL 0.1)
+		require.Equal(t, http.StatusNoContent, e.deleteTrade(first.ID).Status)
+		e.assertPosition(e.btc.ID, "0.4", "70000", "0")
+		assert.True(t, dec("35000").Add(dec("9000")).Add(dec("30000")).Equal(e.balance(e.a)), "the older BUY is refunded")
+		assert.True(t, dec("2000").Equal(dec(e.inv.get(e.btc.ID).RealizedPL.Amount)), "(90000-70000)*0.1 now")
+		expectLedgerConsistent(t, s, e.a.ID)
 
 		// the latest operation is still editable, and once it is undone the older ones are again
 		require.Equal(t, http.StatusNoContent, e.deleteTrade(later.ID).Status)
@@ -617,9 +623,9 @@ func TestFundingTheInitialPosition(t *testing.T) {
 		assert.JSONEq(t, `{"quantity":"0.5","avgBuyPrice":"60000","fees":"10"}`, after)
 		expectLedgerConsistent(t, s, e.a.ID)
 
-		// it behaves like any BUY afterwards: later trades guard it, and undoing it empties the position
+		// it behaves like any BUY afterwards: a later sale guards it, and undoing it empties the position
 		sale := e.mustTrade(e.sell(e.a, inv.ID, "0.1", "70000", ""))
-		assert.Equal(t, "POSITION_CHANGED_SINCE", errCode(t, e.deleteTrade(tr.ID)))
+		assert.Equal(t, "TRADE_DELETE_BREAKS_LATER_SELL", errCode(t, e.deleteTrade(tr.ID)), "the later sale would no longer fit")
 		require.Equal(t, http.StatusNoContent, e.deleteTrade(sale.ID).Status)
 		require.Equal(t, http.StatusNoContent, e.deleteTrade(tr.ID).Status)
 		e.assertPosition(inv.ID, "0", "0", "0")

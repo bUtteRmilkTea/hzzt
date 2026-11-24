@@ -187,7 +187,7 @@ Create and patch without the fields; create and patch **with** the old fields st
 - [x] Phase L: refresh 15 minutes, symbol check, grouped wrapper PnL
 - [x] Phase P: remove expected yearly change and staked quantity
 - [x] Phase M: one exchange or broker field
-- [ ] Phase N: trade history per investment, delete with replay
+- [x] Phase N: trade history per investment, delete with replay
 - [ ] Phase O: manual asset value change revert
 - [ ] Phase Q: mutual fund valuations and monthly PnL
 
@@ -266,3 +266,13 @@ Phase P done on `feat/drop-estimated-change-staked` (P-T1 to P-T8 all done; bran
 ## 14. Phase M implementation note (Nov 24, 2026)
 
 Phase M done on `feat/single-wrapper-field` (M-T1 to M-T6 all done; stacked on the Phase P branch because both edit this plan file). Migration number is 00023 (`00023_details_wrapper_fold.sql`). Metadata no longer lists `exchangeOrWallet`, `broker`, `platform`; US stock and ETF `exchange` is labelled "Listing exchange" and stays required. The three keys are still accepted on write and mapped into `wrapper` when it is empty, and are never stored or returned (also stripped when old rows are read). A PATCH that sends one of them in details sets the wrapper from it (an explicit `wrapper` wins); `wrapper: null` now clears the wrapper (it can no longer be re-derived because details do not keep the key). The migration ran up, down, up on a scratch copy of the dev database (dev: 5 rows had one of the keys, 0 after). The removal of the three keys from the request structs (end of the one release) is a follow-up.
+
+## 15. Phase N implementation note (Nov 24, 2026)
+
+Phase N done on `feat/investment-trade-history` (N-T1 to N-T7 all done; stacked on the Phase M branch because all phases tick this plan file). Migration number 00024 (`00024_trade_history_support.sql`).
+
+Two corrections to section 3 found while building it (neither changes D-B9):
+- **Replay order.** The plan says replay in `occurred_at, id` order. That is wrong for a history with backdated trades: `position_before` and `position_after` follow the order the trades were recorded, not their dates, so replaying by date would silently change the realised profit of unrelated trades and would not match the stored chain. The replay and `canDelete` use the recorded order (`created_at, id`). The list endpoint still shows newest first by `occurredAt` as written. To make the recorded order reliable the migration sets `transactions.created_at` default to `clock_timestamp()` (taken at the insert, which runs under the investment lock) instead of `now()` (the start of the database transaction, which can be earlier than a competing trade that locked first). Existing rows are not touched.
+- **Only the trades after the deleted one are replayed**, starting from that trade's own `position_before`, instead of from the opening position of the whole history. The result is the same, and a manual position edit made before the deleted trade does not matter. A manual edit made after it (the snapshots stop forming an unbroken run up to the current position) still answers 409 `POSITION_CHANGED_SINCE`, and the list reports it in `blockedReason`.
+
+Other notes: the delete endpoint stays `DELETE /spaces/{spaceId}/transfers/{id}` (the transactions delete answers `USE_SPECIFIC_ENDPOINT` for trades); `UpdateTrade` is unchanged (still latest only, as the plan says); a shared-in viewer can read the history (wallet hidden) but is not a member of the owner's space, so a delete attempt answers 404 before it can reach `OWNER_ONLY`; `GET /transactions` also accepts `investmentIds`. The old index `transactions_investment_idx` was replaced by `transactions_investment_occurred_idx` (EXPLAIN uses it with no sort step). Tests: unit table tests and a 200 run property test for `ReplayPositions`, e2e for list/paging, replay equal to a fresh twin investment, refusal with 422, double delete 404, funding BUY, deleted wallet, ID stock lots, hand edited position and the shared viewer. The migration ran up, down, up on a scratch copy of the dev database.

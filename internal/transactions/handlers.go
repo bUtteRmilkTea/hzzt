@@ -348,6 +348,7 @@ func ParseFilter(r *http.Request, user sqlc.User, space sqlc.Space, now time.Tim
 	}
 	f.CategoryIDs = parseIDs("categoryIds")
 	f.WalletIDs = parseIDs("walletIds")
+	f.InvestmentIDs = parseIDs("investmentIds")
 
 	f.Q = strings.TrimSpace(v.Get("q"))
 	if len([]rune(f.Q)) > 100 {
@@ -539,7 +540,7 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 // list godoc
 //
 //	@Summary		Search and filter the transaction history
-//	@Description	Newest first (occurredAt desc, id desc) with cursor pagination. `period` is TODAY, THIS_WEEK, THIS_PERIOD, LAST_7_DAYS, LAST_30_DAYS, LAST_60_DAYS, LAST_90_DAYS, THIS_YEAR or ALL_TIME; or use `from`/`to` (YYYY-MM-DD, inclusive). `types`, `categoryIds` and `walletIds` accept repeated, `[]`-suffixed or comma-separated values; walletIds matches the source or destination wallet. `q` searches title, note, category and wallet names. Filters combine with AND across fields and OR within a list.
+//	@Description	Newest first (occurredAt desc, id desc) with cursor pagination. `period` is TODAY, THIS_WEEK, THIS_PERIOD, LAST_7_DAYS, LAST_30_DAYS, LAST_60_DAYS, LAST_90_DAYS, THIS_YEAR or ALL_TIME; or use `from`/`to` (YYYY-MM-DD, inclusive). `types`, `categoryIds`, `walletIds` and `investmentIds` accept repeated, `[]`-suffixed or comma-separated values; walletIds matches the source or destination wallet. `q` searches title, note, category and wallet names. Filters combine with AND across fields and OR within a list.
 //	@Tags			transactions
 //	@Security		BearerAuth
 //	@Produce		json
@@ -550,6 +551,7 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 //	@Param			types		query		[]string	false	"INCOME, EXPENSE, TRANSFER, ADJUSTMENT, OPENING_BALANCE"
 //	@Param			categoryIds	query		[]string	false	"Category IDs"
 //	@Param			walletIds	query		[]string	false	"Wallet IDs"
+//	@Param			investmentIds	query		[]string	false	"Investment IDs (the trades of those investments)"
 //	@Param			q			query		string	false	"Search text"
 //	@Param			limit		query		int		false	"Page size (default 30, max 100)"
 //	@Param			cursor		query		string	false	"nextCursor of the previous page"
@@ -602,6 +604,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 //	@Param			types		query		[]string	false	"Transaction types"
 //	@Param			categoryIds	query		[]string	false	"Category IDs"
 //	@Param			walletIds	query		[]string	false	"Wallet IDs"
+//	@Param			investmentIds	query		[]string	false	"Investment IDs (the trades of those investments)"
 //	@Param			q			query		string		false	"Search text"
 //	@Success		200			{object}	DailySummaryResponse
 //	@Failure		400			{object}	httpx.ErrorEnvelope

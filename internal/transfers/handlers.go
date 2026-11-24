@@ -307,7 +307,7 @@ func (h *Handler) trade(r *http.Request, userID, spaceID uuid.UUID, req createRe
 // update godoc
 //
 //	@Summary		Edit a transfer, BUY or SELL
-//	@Description	Any field may be sent; the old effect is reversed and the new one applied atomically. For wallet transfers, changing the amount or either wallet of a cross-currency transfer requires `toAmount`. For a BUY/SELL, send the investment side as `{type:"INVESTMENT", quantity?, unitPrice?, fee?}` and the wallet side as `{type:"WALLET", walletId}`; the investment itself cannot change. A BUY/SELL can only be edited (or deleted) while the investment's position is still the one it left behind, otherwise 409 POSITION_CHANGED_SINCE.
+//	@Description	Any field may be sent; the old effect is reversed and the new one applied atomically. For wallet transfers, changing the amount or either wallet of a cross-currency transfer requires `toAmount`. For a BUY/SELL, send the investment side as `{type:"INVESTMENT", quantity?, unitPrice?, fee?}` and the wallet side as `{type:"WALLET", walletId}`; the investment itself cannot change. A BUY/SELL can only be edited while the investment's position is still the one it left behind, otherwise 409 POSITION_CHANGED_SINCE (deleting is more permissive, see DELETE).
 //	@Tags			transfers
 //	@Security		BearerAuth
 //	@Accept			json
@@ -384,7 +384,7 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 // delete godoc
 //
 //	@Summary		Delete a transfer, BUY or SELL (balances and position are restored)
-//	@Description	A BUY/SELL can only be deleted while the investment's position is still the one it left behind (409 POSITION_CHANGED_SINCE).
+//	@Description	Any BUY/SELL can be deleted, not only the newest: the trades recorded after it are replayed on top of the position it started from, and their position snapshots and realised profit are rewritten in the same database transaction (each later trade keeps its own wallet amounts, the deleted trade's wallet effect is reversed). Refused with 422 TRADE_DELETE_BREAKS_LATER_SELL (details.tradeId names the first later sale that would no longer have enough quantity; nothing changes) and with 409 POSITION_CHANGED_SINCE when the position was edited by hand after the trade. A second delete of the same id is 404. Net worth snapshots of past days are not rewritten. See GET /spaces/{spaceId}/investments/{id}/trades (canDelete, blockedReason).
 //	@Tags		transfers
 //	@Security	BearerAuth
 //	@Param		spaceId	path	string	true	"Space ID"
@@ -392,6 +392,7 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 //	@Success	204
 //	@Failure	404	{object}	httpx.ErrorEnvelope
 //	@Failure	409	{object}	httpx.ErrorEnvelope	"POSITION_CHANGED_SINCE"
+//	@Failure	422	{object}	httpx.ErrorEnvelope	"TRADE_DELETE_BREAKS_LATER_SELL"
 //	@Failure	403	{object}	httpx.ErrorEnvelope	"OWNER_ONLY (BUY/SELL on an investment shared into this space)"
 //	@Router		/spaces/{spaceId}/transfers/{id} [delete]
 func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {

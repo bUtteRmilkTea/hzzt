@@ -75,6 +75,7 @@ WHERE t.space_id = $1
   AND (sqlc.narg('wallet_ids')::uuid[] IS NULL
        OR t.wallet_id = ANY(sqlc.narg('wallet_ids')::uuid[])
        OR t.to_wallet_id = ANY(sqlc.narg('wallet_ids')::uuid[]))
+  AND (sqlc.narg('investment_ids')::uuid[] IS NULL OR t.investment_id = ANY(sqlc.narg('investment_ids')::uuid[]))
   AND (sqlc.narg('q')::text IS NULL
        OR t.title ILIKE sqlc.narg('q') OR t.note ILIKE sqlc.narg('q')
        OR c.name ILIKE sqlc.narg('q') OR w.name ILIKE sqlc.narg('q') OR tw.name ILIKE sqlc.narg('q')
@@ -102,6 +103,7 @@ WHERE t.space_id = $1
   AND (sqlc.narg('wallet_ids')::uuid[] IS NULL
        OR t.wallet_id = ANY(sqlc.narg('wallet_ids')::uuid[])
        OR t.to_wallet_id = ANY(sqlc.narg('wallet_ids')::uuid[]))
+  AND (sqlc.narg('investment_ids')::uuid[] IS NULL OR t.investment_id = ANY(sqlc.narg('investment_ids')::uuid[]))
   AND (sqlc.narg('q')::text IS NULL
        OR t.title ILIKE sqlc.narg('q') OR t.note ILIKE sqlc.narg('q')
        OR c.name ILIKE sqlc.narg('q') OR w.name ILIKE sqlc.narg('q') OR tw.name ILIKE sqlc.narg('q')
@@ -127,6 +129,7 @@ WHERE t.space_id = $1
   AND (sqlc.narg('wallet_ids')::uuid[] IS NULL
        OR t.wallet_id = ANY(sqlc.narg('wallet_ids')::uuid[])
        OR t.to_wallet_id = ANY(sqlc.narg('wallet_ids')::uuid[]))
+  AND (sqlc.narg('investment_ids')::uuid[] IS NULL OR t.investment_id = ANY(sqlc.narg('investment_ids')::uuid[]))
   AND (sqlc.narg('q')::text IS NULL
        OR t.title ILIKE sqlc.narg('q') OR t.note ILIKE sqlc.narg('q')
        OR c.name ILIKE sqlc.narg('q') OR w.name ILIKE sqlc.narg('q') OR tw.name ILIKE sqlc.narg('q')
@@ -162,3 +165,25 @@ UPDATE transactions SET
     position_before = $12, position_after = $13, occurred_at = $14, note = sqlc.narg('note'), updated_at = now()
 WHERE id = $1 AND space_id = $2 AND investment_id IS NOT NULL
 RETURNING *;
+
+-- name: ListTradesByInvestment :many
+-- The BUY and SELL rows of one investment, newest first (occurred_at desc, id desc), with the wallet name.
+SELECT t.*, w.name AS wallet_name
+FROM transactions t
+LEFT JOIN wallets w ON w.id = t.wallet_id
+WHERE t.investment_id = $1 AND t.space_id = $2 AND t.investment_action IS NOT NULL
+  AND (sqlc.narg('cursor_at')::timestamptz IS NULL
+       OR (t.occurred_at, t.id) < (sqlc.narg('cursor_at')::timestamptz, sqlc.narg('cursor_id')::uuid))
+ORDER BY t.occurred_at DESC, t.id DESC
+LIMIT sqlc.arg('row_limit')::int;
+
+-- name: ListTradeChain :many
+-- Every BUY and SELL of one investment in the order they were recorded (the order of the position snapshots).
+SELECT * FROM transactions
+WHERE investment_id = $1 AND space_id = $2 AND investment_action IS NOT NULL
+ORDER BY created_at ASC, id ASC;
+
+-- name: UpdateTradePositions :exec
+-- Rewrites the position snapshots and the realised result of a trade after an earlier trade was deleted.
+UPDATE transactions SET position_before = $3, position_after = $4, realized_pl = sqlc.narg('realized_pl'), updated_at = now()
+WHERE id = $1 AND space_id = $2;

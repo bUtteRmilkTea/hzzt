@@ -60,6 +60,7 @@ func (h *Handler) Mount(r chi.Router) {
 		r.Patch(p+"/{id}", h.update)
 		r.Delete(p+"/{id}", h.delete)
 		r.Post(p+"/{id}/refresh-price", h.refreshPrice)
+		r.Get(p+"/{id}/trades", h.trades)
 		r.Get(p+"/{id}/participants", h.participants)
 		r.Put(p+"/{id}/participants", h.setParticipants)
 		r.Delete(p+"/{id}/participants", h.stopSharing)

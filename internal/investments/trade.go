@@ -118,21 +118,6 @@ func lotsDetails(inv sqlc.Investment, qty decimal.Decimal) ([]byte, error) {
 	return json.Marshal(det)
 }
 
-// stakedOf is the part of a crypto position that cannot be sold.
-func stakedOf(inv sqlc.Investment) decimal.Decimal {
-	if inv.AssetType != TypeCrypto {
-		return decimal.Zero
-	}
-	d, err := parseStoredDetails(inv.AssetType, inv.Details)
-	if err != nil {
-		return decimal.Zero
-	}
-	if c := d.(cryptoDetails); c.StakedQuantity != nil {
-		return *c.StakedQuantity
-	}
-	return decimal.Zero
-}
-
 // checkLeg validates the numbers of a trade against the investment's type.
 func checkLeg(inv sqlc.Investment, l Leg) error {
 	f := map[string]any{}
@@ -173,7 +158,7 @@ func computeTrade(inv sqlc.Investment, from Position, w sqlc.Wallet, action stri
 		r.after = from.Buy(l)
 		r.total = l.Gross().Add(l.Fee)
 	case ledger.ActionSell:
-		after, realized, err := from.Sell(l, stakedOf(inv))
+		after, realized, err := from.Sell(l)
 		if err != nil {
 			return tradeResult{}, err
 		}

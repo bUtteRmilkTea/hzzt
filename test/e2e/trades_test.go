@@ -253,16 +253,6 @@ func TestSellRules(t *testing.T) {
 		e.assertPosition(e.btc.ID, "2", "50000", "20")
 	})
 
-	t.Run("staked crypto cannot be sold", func(t *testing.T) {
-		eth := e.inv.must(map[string]any{"assetType": "CRYPTO", "name": "Ethereum", "symbol": "ETH", "quantity": "10",
-			"avgBuyPrice": "2000", "manualPrice": "2500", "details": map[string]any{"stakedQuantity": "4"}})
-		res := e.sell(e.a, eth.ID, "6.5", "2500", "")
-		require.Equal(t, http.StatusUnprocessableEntity, res.Status)
-		assert.Equal(t, "INSUFFICIENT_QUANTITY", errCode(t, res))
-		got := e.mustTrade(e.sell(e.a, eth.ID, "6", "2500", ""))
-		assert.True(t, dec("3000").Equal(dec(*got.RealizedPL)), "(2500−2000)×6: %s", *got.RealizedPL)
-	})
-
 	t.Run("selling everything is allowed and keeps the average and fees", func(t *testing.T) {
 		e.mustTrade(e.sell(e.a, e.btc.ID, "2", "55000", "5"))
 		e.assertPosition(e.btc.ID, "0", "50000", "20")

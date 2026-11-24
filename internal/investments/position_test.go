@@ -3,7 +3,6 @@ package investments
 import (
 	"testing"
 
-	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -43,28 +42,28 @@ func TestBuyAveragesTheCost(t *testing.T) {
 
 func TestSellRealizesProfitAndKeepsTheAverage(t *testing.T) {
 	t.Run("acceptance: selling 0.4 at 80,000 with fee 10 realizes 5,990", func(t *testing.T) {
-		after, realized, err := pos("1", "65000", "0").Sell(leg("0.4", "80000", "10"), decimal.Zero)
+		after, realized, err := pos("1", "65000", "0").Sell(leg("0.4", "80000", "10"))
 		require.NoError(t, err)
 		assert.True(t, d("5990").Equal(realized), realized.String())
 		assert.True(t, pos("0.6", "65000", "0").Equal(after), "the average stays the same")
 	})
 	t.Run("a loss", func(t *testing.T) {
-		_, realized, err := pos("10", "100", "0").Sell(leg("4", "90", "2"), decimal.Zero)
+		_, realized, err := pos("10", "100", "0").Sell(leg("4", "90", "2"))
 		require.NoError(t, err)
 		assert.True(t, d("-42").Equal(realized), "(90−100)×4 − 2")
 	})
 	t.Run("break even minus the fee", func(t *testing.T) {
-		_, realized, err := pos("10", "100", "0").Sell(leg("10", "100", "5"), decimal.Zero)
+		_, realized, err := pos("10", "100", "0").Sell(leg("10", "100", "5"))
 		require.NoError(t, err)
 		assert.True(t, d("-5").Equal(realized))
 	})
 	t.Run("selling everything leaves zero quantity but keeps average and fees", func(t *testing.T) {
-		after, _, err := pos("3", "10", "7").Sell(leg("3", "12", "0"), decimal.Zero)
+		after, _, err := pos("3", "10", "7").Sell(leg("3", "12", "0"))
 		require.NoError(t, err)
 		assert.True(t, pos("0", "10", "7").Equal(after))
 	})
 	t.Run("fees already paid are not touched by a sale", func(t *testing.T) {
-		after, _, err := pos("10", "100", "25").Sell(leg("1", "110", "3"), decimal.Zero)
+		after, _, err := pos("10", "100", "25").Sell(leg("1", "110", "3"))
 		require.NoError(t, err)
 		assert.True(t, d("25").Equal(after.Fees))
 	})
@@ -80,18 +79,16 @@ func TestSellCannotExceedWhatIsAvailable(t *testing.T) {
 		assert.Equal(t, 422, ae.HTTPStatus)
 		assert.Equal(t, available, ae.Details["available"])
 	}
-	_, _, err := pos("1", "100", "0").Sell(leg("1.000000000000000001", "100", "0"), decimal.Zero)
+	_, _, err := pos("1", "100", "0").Sell(leg("1.000000000000000001", "100", "0"))
 	expectInsufficient(t, err, "1")
 
-	t.Run("staked quantity is locked", func(t *testing.T) {
-		_, _, err := pos("2", "100", "0").Sell(leg("1.5", "100", "0"), d("1"))
-		expectInsufficient(t, err, "1")
-		after, _, err := pos("2", "100", "0").Sell(leg("1", "100", "0"), d("1"))
-		require.NoError(t, err, "exactly the unstaked part can go")
-		assert.True(t, d("1").Equal(after.Quantity))
+	t.Run("the whole quantity can be sold", func(t *testing.T) {
+		after, _, err := pos("2", "100", "0").Sell(leg("2", "100", "0"))
+		require.NoError(t, err)
+		assert.True(t, after.Quantity.IsZero())
 	})
 	t.Run("an empty position cannot be sold from", func(t *testing.T) {
-		_, _, err := pos("0", "0", "0").Sell(leg("0.1", "1", "0"), decimal.Zero)
+		_, _, err := pos("0", "0", "0").Sell(leg("0.1", "1", "0"))
 		expectInsufficient(t, err, "0")
 	})
 }
@@ -100,7 +97,7 @@ func TestBuyThenSellRoundTrip(t *testing.T) {
 	start := pos("1", "65000", "10")
 	bought := start.Buy(leg("2", "50000", "5"))
 	assert.True(t, pos("3", "55000", "15").Equal(bought))
-	sold, realized, err := bought.Sell(leg("2", "60000", "0"), decimal.Zero)
+	sold, realized, err := bought.Sell(leg("2", "60000", "0"))
 	require.NoError(t, err)
 	assert.True(t, d("10000").Equal(realized), "(60000−55000)×2")
 	assert.True(t, pos("1", "55000", "15").Equal(sold))

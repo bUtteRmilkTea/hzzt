@@ -89,15 +89,7 @@ type CreateInput struct {
 	CurrentValue     decimal.Decimal
 	Counterparty     *string
 	DueDate          *time.Time
-	EstimatedChange  *decimal.Decimal
 	Note             *string
-}
-
-func nullDec(d *decimal.Decimal) decimal.NullDecimal {
-	if d == nil {
-		return decimal.NullDecimal{}
-	}
-	return decimal.NullDecimal{Decimal: *d, Valid: true}
 }
 
 // Create stores an asset and writes its first value-history row.
@@ -112,7 +104,7 @@ func (s *Service) Create(ctx context.Context, space sqlc.Space, userID uuid.UUID
 		var err error
 		a, err = q.CreateManualAsset(ctx, sqlc.CreateManualAssetParams{
 			SpaceID: space.ID, Kind: in.Kind, Name: in.Name, Icon: in.Icon, Currency: cur, CurrentValue: in.CurrentValue,
-			CounterpartyName: in.Counterparty, DueDate: in.DueDate, EstimatedAnnualChangePct: nullDec(in.EstimatedChange),
+			CounterpartyName: in.Counterparty, DueDate: in.DueDate,
 			Note: in.Note, CreatedByID: userID,
 		})
 		if err != nil {
@@ -202,7 +194,6 @@ type UpdateInput struct {
 	CurrentValue         *decimal.Decimal
 	Counterparty         Optional[string]
 	DueDate              Optional[time.Time]
-	EstimatedChange      Optional[decimal.Decimal]
 	Note                 Optional[string]
 }
 
@@ -221,10 +212,6 @@ func (s *Service) Update(ctx context.Context, spaceID, id uuid.UUID, in UpdateIn
 		p := sqlc.UpdateManualAssetParams{
 			ID: id, SpaceID: spaceID, Name: cur.Name, Icon: cur.Icon, Currency: cur.Currency, CurrentValue: cur.CurrentValue,
 			CounterpartyName: cur.CounterpartyName, DueDate: cur.DueDate, Note: cur.Note,
-		}
-		if cur.EstimatedAnnualChangePct.Valid {
-			v := cur.EstimatedAnnualChangePct.Decimal
-			p.EstimatedAnnualChangePct = decimal.NullDecimal{Decimal: v, Valid: true}
 		}
 		if in.Name != nil {
 			p.Name = *in.Name
@@ -251,14 +238,8 @@ func (s *Service) Update(ctx context.Context, spaceID, id uuid.UUID, in UpdateIn
 		if in.DueDate.Set {
 			p.DueDate = in.DueDate.Value
 		}
-		if in.EstimatedChange.Set {
-			p.EstimatedAnnualChangePct = nullDec(in.EstimatedChange.Value)
-		}
 		if in.Note.Set {
 			p.Note = in.Note.Value
-		}
-		if p.EstimatedAnnualChangePct.Valid && cur.Kind != KindFixedAsset {
-			return apperror.Validation("Validation failed", map[string]any{"estimatedAnnualChangePct": "only applies to fixed assets"})
 		}
 		if out, err = q.UpdateManualAsset(ctx, p); err != nil {
 			return err

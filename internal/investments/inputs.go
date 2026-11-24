@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 	"github.com/shopspring/decimal"
 
 	"github.com/JonathanRainee/hzzt/internal/db/sqlc"
@@ -32,8 +33,6 @@ type Spec struct {
 	ManualCurrentValue *decimal.Decimal
 	ManualFxRate       *decimal.Decimal
 	PurchaseDate       *time.Time
-	// EstimatedAnnualChangePct is the user's own assumed yearly change; nil when never typed (no default).
-	EstimatedAnnualChangePct *decimal.Decimal
 	// Wrapper is the exchange, broker or platform the position is held on (grouping key); nil when unknown.
 	Wrapper *string
 	// Details is one of the *Details structs below.
@@ -60,9 +59,11 @@ type Funding struct {
 // --- per-type details ----------------------------------------------------------
 
 type cryptoDetails struct {
-	ExchangeOrWallet *string          `json:"exchangeOrWallet,omitempty" validate:"omitempty,max=60"`
-	Network          *string          `json:"network,omitempty" validate:"omitempty,max=40"`
-	StakedQuantity   *decimal.Decimal `json:"stakedQuantity,omitempty" swaggertype:"string"`
+	ExchangeOrWallet *string `json:"exchangeOrWallet,omitempty" validate:"omitempty,max=60"`
+	Network          *string `json:"network,omitempty" validate:"omitempty,max=40"`
+	// StakedQuantity is removed: it is accepted and ignored for one release (old clients), never stored or returned.
+	// Deprecated: remove next release.
+	StakedQuantity json.RawMessage `json:"stakedQuantity,omitempty" swaggerignore:"true"`
 }
 
 type idStockDetails struct {
@@ -120,7 +121,7 @@ func decodeDetails(assetType string, raw json.RawMessage) (any, error) {
 	if err := httpx.Validate(d); err != nil {
 		return nil, prefixDetails(err)
 	}
-	return deref(d), nil
+	return dropRemovedDetails(deref(d)), nil
 }
 
 func prefixDetails(err error) error {
@@ -163,7 +164,8 @@ func parseStoredDetails(assetType string, raw []byte) (any, error) {
 			return nil, fmt.Errorf("decode %s details: %w", assetType, err)
 		}
 	}
-	return deref(d), nil
+	out, _ := clearRemoved(deref(d)) // old rows may still hold removed keys: never carry them forward
+	return out, nil
 }
 
 // --- shared fields ---------------------------------------------------------------
@@ -177,13 +179,15 @@ type base struct {
 	Icon          *string `json:"icon"`
 	QuoteCurrency *string `json:"quoteCurrency"`
 	// Wrapper is the exchange, broker or platform holding the position (1 to 60 characters). When omitted it is derived from details (exchangeOrWallet, broker or platform).
-	Wrapper                  *string          `json:"wrapper" example:"Binance"`
-	AvgBuyPrice              *decimal.Decimal `json:"avgBuyPrice" swaggertype:"string" example:"9200"`
-	ManualPrice              *decimal.Decimal `json:"manualPrice" swaggertype:"string" example:"9500"`
-	Fees                     *decimal.Decimal `json:"fees" swaggertype:"string"`
-	ManualCurrentValue       *decimal.Decimal `json:"manualCurrentValue" swaggertype:"string"`
-	PurchaseDate             *string          `json:"purchaseDate" example:"2026-01-31"`
-	EstimatedAnnualChangePct *decimal.Decimal `json:"estimatedAnnualChangePct" swaggertype:"string" example:"5.5"`
+	Wrapper            *string          `json:"wrapper" example:"Binance"`
+	AvgBuyPrice        *decimal.Decimal `json:"avgBuyPrice" swaggertype:"string" example:"9200"`
+	ManualPrice        *decimal.Decimal `json:"manualPrice" swaggertype:"string" example:"9500"`
+	Fees               *decimal.Decimal `json:"fees" swaggertype:"string"`
+	ManualCurrentValue *decimal.Decimal `json:"manualCurrentValue" swaggertype:"string"`
+	PurchaseDate       *string          `json:"purchaseDate" example:"2026-01-31"`
+	// EstimatedAnnualChangePct is removed: accepted and ignored for one release (old clients).
+	// Deprecated: remove next release.
+	EstimatedAnnualChangePct json.RawMessage  `json:"estimatedAnnualChangePct,omitempty" swaggerignore:"true"`
 	ManualFxRate             *decimal.Decimal `json:"manualFxRate" swaggertype:"string" example:"16000"`
 	// Funding pays the initial position from a wallet (optional).
 	Funding *Funding `json:"funding"`
@@ -436,7 +440,8 @@ func buildSpec(assetType, name string, b *base, quantity *decimal.Decimal, detai
 	} else if meta.Defaults.PriceMode == PriceModeAuto {
 		s.PriceMode, s.AutoDefault = PriceModeAuto, true // D-B4: crypto is priced by the market unless told otherwise
 	}
-	s.EstimatedAnnualChangePct = b.EstimatedAnnualChangePct
+	noteIgnoredFields("create", b.EstimatedAnnualChangePct)
+	s.Details = dropRemovedDetails(s.Details)
 	if quantity != nil {
 		s.Quantity = *quantity
 	}
@@ -461,13 +466,6 @@ func checkMoneyFields(f map[string]any, s *Spec, b *base, quantity *decimal.Deci
 	checkDec(f, "fees", b.Fees, 8, false)
 	checkDec(f, "manualCurrentValue", b.ManualCurrentValue, 8, false)
 	checkDec(f, "manualFxRate", b.ManualFxRate, 12, true)
-	if p := b.EstimatedAnnualChangePct; p != nil {
-		if p.LessThan(decimal.NewFromInt(-100)) || p.GreaterThan(decimal.NewFromInt(1000)) {
-			f["estimatedAnnualChangePct"] = "must be between -100 and 1000"
-		} else if !p.Round(4).Equal(*p) {
-			f["estimatedAnnualChangePct"] = "must have at most 4 decimal places"
-		}
-	}
 	return nil
 }
 
@@ -487,13 +485,6 @@ func finalize(s Spec, f map[string]any) (Spec, error) {
 					f["details.lots"] = "is too large"
 				}
 				s.Quantity = lots.Mul(decimal.NewFromInt(LotSize)) // quantity = lots × 100
-			}
-		}
-	case cryptoDetails:
-		if d.StakedQuantity != nil {
-			checkDec(f, "details.stakedQuantity", d.StakedQuantity, QuantityScaleFor(TypeCrypto), false)
-			if _, bad := f["details.stakedQuantity"]; !bad && d.StakedQuantity.GreaterThan(s.Quantity) {
-				f["details.stakedQuantity"] = "must not exceed quantity"
 			}
 		}
 	case mutualFundDetails:
@@ -564,20 +555,22 @@ func (n *nullStr) UnmarshalJSON(b []byte) error {
 
 // PatchInput is a partial update. assetType is immutable: it may be sent only if unchanged.
 type PatchInput struct {
-	AssetType                *string          `json:"assetType"`
-	PriceMode                *string          `json:"priceMode" validate:"omitempty,oneof=AUTO MANUAL"`
-	Name                     *string          `json:"name" validate:"omitempty,min=1,max=120"`
-	Symbol                   nullStr          `json:"symbol" swaggertype:"string"`
-	Icon                     *string          `json:"icon" validate:"omitempty,max=64"`
-	QuoteCurrency            *string          `json:"quoteCurrency" validate:"omitempty,max=8"`
-	Quantity                 *decimal.Decimal `json:"quantity" swaggertype:"string"`
-	AvgBuyPrice              *decimal.Decimal `json:"avgBuyPrice" swaggertype:"string"`
-	ManualPrice              *decimal.Decimal `json:"manualPrice" swaggertype:"string"`
-	Fees                     *decimal.Decimal `json:"fees" swaggertype:"string"`
-	ManualCurrentValue       nullDec          `json:"manualCurrentValue" swaggertype:"string"`
-	PurchaseDate             nullStr          `json:"purchaseDate" swaggertype:"string"`
-	EstimatedAnnualChangePct nullDec          `json:"estimatedAnnualChangePct" swaggertype:"string"`
-	ManualFxRate             nullDec          `json:"manualFxRate" swaggertype:"string"`
+	AssetType          *string          `json:"assetType"`
+	PriceMode          *string          `json:"priceMode" validate:"omitempty,oneof=AUTO MANUAL"`
+	Name               *string          `json:"name" validate:"omitempty,min=1,max=120"`
+	Symbol             nullStr          `json:"symbol" swaggertype:"string"`
+	Icon               *string          `json:"icon" validate:"omitempty,max=64"`
+	QuoteCurrency      *string          `json:"quoteCurrency" validate:"omitempty,max=8"`
+	Quantity           *decimal.Decimal `json:"quantity" swaggertype:"string"`
+	AvgBuyPrice        *decimal.Decimal `json:"avgBuyPrice" swaggertype:"string"`
+	ManualPrice        *decimal.Decimal `json:"manualPrice" swaggertype:"string"`
+	Fees               *decimal.Decimal `json:"fees" swaggertype:"string"`
+	ManualCurrentValue nullDec          `json:"manualCurrentValue" swaggertype:"string"`
+	PurchaseDate       nullStr          `json:"purchaseDate" swaggertype:"string"`
+	// EstimatedAnnualChangePct is removed: accepted and ignored for one release (old clients).
+	// Deprecated: remove next release.
+	EstimatedAnnualChangePct json.RawMessage `json:"estimatedAnnualChangePct,omitempty" swaggerignore:"true"`
+	ManualFxRate             nullDec         `json:"manualFxRate" swaggertype:"string"`
 	// Wrapper sets the exchange, broker or platform holding the position; null re-derives it from details.
 	Wrapper nullStr `json:"wrapper" swaggertype:"string"`
 	// InstrumentID relinks an auto-priced investment to an instrument picked from search.
@@ -596,10 +589,6 @@ func specFromRow(inv sqlc.Investment) (Spec, error) {
 		QuoteCurrency: strings.TrimSpace(inv.QuoteCurrency), Quantity: inv.Quantity, AvgBuyPrice: inv.AvgBuyPrice,
 		ManualPrice: inv.ManualPrice, Fees: inv.Fees, PurchaseDate: inv.PurchaseDate,
 		Details: d, Wrapper: inv.Wrapper,
-	}
-	if inv.EstimatedAnnualChangePct.Valid {
-		v := inv.EstimatedAnnualChangePct.Decimal
-		s.EstimatedAnnualChangePct = &v
 	}
 	if inv.ManualCurrentValue.Valid {
 		v := inv.ManualCurrentValue.Decimal
@@ -673,21 +662,12 @@ func (p PatchInput) apply(inv sqlc.Investment, baseCurrency string) (Spec, error
 	if p.PurchaseDate.Set {
 		s.PurchaseDate = parseDate(f, "purchaseDate", p.PurchaseDate.Value)
 	}
-	if p.EstimatedAnnualChangePct.Set {
-		s.EstimatedAnnualChangePct = p.EstimatedAnnualChangePct.Value // null clears it
-	}
+	noteIgnoredFields("patch", p.EstimatedAnnualChangePct)
 	checkDec(f, "avgBuyPrice", p.AvgBuyPrice, 8, false)
 	checkDec(f, "manualPrice", p.ManualPrice, 8, false)
 	checkDec(f, "fees", p.Fees, 8, false)
 	checkDec(f, "manualCurrentValue", p.ManualCurrentValue.Value, 8, false)
 	checkDec(f, "manualFxRate", p.ManualFxRate.Value, 12, true)
-	if v := p.EstimatedAnnualChangePct.Value; v != nil {
-		if v.LessThan(decimal.NewFromInt(-100)) || v.GreaterThan(decimal.NewFromInt(1000)) {
-			f["estimatedAnnualChangePct"] = "must be between -100 and 1000"
-		} else if !v.Round(4).Equal(*v) {
-			f["estimatedAnnualChangePct"] = "must have at most 4 decimal places"
-		}
-	}
 	if len(bytes.TrimSpace(p.Details)) > 0 && string(bytes.TrimSpace(p.Details)) != "null" {
 		d, err := decodeDetails(s.AssetType, p.Details)
 		if err != nil {
@@ -725,4 +705,29 @@ func equalPtr(a, b *string) bool {
 		return a == b
 	}
 	return *a == *b
+}
+
+// noteIgnoredFields logs the use of a request field that was removed and is only accepted for one release (old clients).
+func noteIgnoredFields(where string, estimated json.RawMessage) {
+	if len(estimated) > 0 {
+		log.Warn().Str("where", where).Msg("deprecated request field ignored: estimatedAnnualChangePct")
+	}
+}
+
+// dropRemovedDetails clears the details keys that were removed but are still accepted for one release, so they are
+// never stored or returned.
+func dropRemovedDetails(d any) any {
+	out, dropped := clearRemoved(d)
+	if dropped {
+		log.Warn().Msg("deprecated request field ignored: details.stakedQuantity")
+	}
+	return out
+}
+
+func clearRemoved(d any) (any, bool) {
+	if c, ok := d.(cryptoDetails); ok && len(c.StakedQuantity) > 0 {
+		c.StakedQuantity = nil
+		return c, true
+	}
+	return d, false
 }

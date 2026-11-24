@@ -2678,7 +2678,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "The body is validated by `assetType` (see GET /investment-types). ID_STOCK takes `details.lots` and derives quantity = lots × 100. CRYPTO checks `details.stakedQuantity` \u003c= quantity. `priceMode: AUTO` is accepted for CRYPTO, US_STOCK and GLOBAL_ETF and answers 422 AUTO_PRICE_NOT_SUPPORTED otherwise. A CRYPTO created without `priceMode` is AUTO by default and linked to its CoinMarketCap coin by symbol; if the symbol is unknown or ambiguous the holding is created as MANUAL and `valuation.warnings` carries `PRICE_NOT_LINKED` (an explicit `priceMode` never falls back). Valuation warnings also include `PRICE_STALE` (a stale market price still counts and is flagged) and `MANUAL_VALUE_OVERRIDES_MARKET` (an AUTO holding with a manual current value, which wins). An AUTO investment is linked to a market instrument: send the `instrumentId` picked from GET /market/crypto/search (CRYPTO) or GET /market/stocks/search (US_STOCK, GLOBAL_ETF), or the symbol is resolved to the highest-ranked coin / the exact ticker (422 INSTRUMENT_NOT_FOUND if none matches). Without a market price the manual price is used. Optional `funding: {walletId, amount?}` pays for the initial position from a wallet: it creates a BUY titled \"Initial position {symbol}\" (wallet debited quantity × avgBuyPrice + fees, converted to the wallet's currency unless `amount` is given) in the same database transaction.",
+                "description": "The body is validated by `assetType` (see GET /investment-types). ID_STOCK takes `details.lots` and derives quantity = lots × 100. `priceMode: AUTO` is accepted for CRYPTO, US_STOCK and GLOBAL_ETF and answers 422 AUTO_PRICE_NOT_SUPPORTED otherwise. A CRYPTO created without `priceMode` is AUTO by default and linked to its CoinMarketCap coin by symbol; if the symbol is unknown or ambiguous the holding is created as MANUAL and `valuation.warnings` carries `PRICE_NOT_LINKED` (an explicit `priceMode` never falls back). Valuation warnings also include `PRICE_STALE` (a stale market price still counts and is flagged) and `MANUAL_VALUE_OVERRIDES_MARKET` (an AUTO holding with a manual current value, which wins). An AUTO investment is linked to a market instrument: send the `instrumentId` picked from GET /market/crypto/search (CRYPTO) or GET /market/stocks/search (US_STOCK, GLOBAL_ETF), or the symbol is resolved to the highest-ranked coin / the exact ticker (422 INSTRUMENT_NOT_FOUND if none matches). Without a market price the manual price is used. Optional `funding: {walletId, amount?}` pays for the initial position from a wallet: it creates a BUY titled \"Initial position {symbol}\" (wallet debited quantity × avgBuyPrice + fees, converted to the wallet's currency unless `amount` is given) in the same database transaction.",
                 "consumes": [
                     "application/json"
                 ],
@@ -3586,7 +3586,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "For a liability `currentValue` is the outstanding amount. `estimatedAnnualChangePct` applies to fixed assets only.",
+                "description": "For a liability `currentValue` is the outstanding amount.",
                 "consumes": [
                     "application/json"
                 ],
@@ -3726,7 +3726,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Changing `currentValue` is recorded in the value history. `counterpartyName`, `dueDate`, `estimatedAnnualChangePct` and `note` accept null to clear. The currency can only change while the asset has no settlements (MANUAL_ASSET_CURRENCY_LOCKED).",
+                "description": "Changing `currentValue` is recorded in the value history. `counterpartyName`, `dueDate` and `note` accept null to clear. The currency can only change while the asset has no settlements (MANUAL_ASSET_CURRENCY_LOCKED).",
                 "consumes": [
                     "application/json"
                 ],
@@ -4522,7 +4522,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "`from` and `to` are `{type:\"WALLET\", walletId}` or `{type:\"INVESTMENT\", investmentId, quantity, unitPrice, fee?}`.\\n\\n**Wallet → wallet**: `toAmount` is required when the wallets use different currencies (the stored rate is toAmount / amount); for the same currency it must equal `amount` or be omitted. Negative balances are allowed.\\n\\n**BUY** (wallet → investment): the wallet is debited quantity × unitPrice + fee, converted to the wallet's currency unless `amount` is given; the position becomes new_qty = q + Δq and new_avg = (q × avg + Δq × unitPrice) / new_qty, fees += fee.\\n\\n**SELL** (investment → wallet): the wallet is credited quantity × unitPrice − fee; the average stays; `realizedPl` = (unitPrice − avg) × Δq − fee. Selling more than quantity − stakedQuantity answers 422 INSUFFICIENT_QUANTITY.\\n\\nInvestment → investment is not supported. Transfers and trades never count as income or expense; they show in the `transfer` column of the daily summary and in the history of the wallet.",
+                "description": "`from` and `to` are `{type:\"WALLET\", walletId}` or `{type:\"INVESTMENT\", investmentId, quantity, unitPrice, fee?}`.\\n\\n**Wallet → wallet**: `toAmount` is required when the wallets use different currencies (the stored rate is toAmount / amount); for the same currency it must equal `amount` or be omitted. Negative balances are allowed.\\n\\n**BUY** (wallet → investment): the wallet is debited quantity × unitPrice + fee, converted to the wallet's currency unless `amount` is given; the position becomes new_qty = q + Δq and new_avg = (q × avg + Δq × unitPrice) / new_qty, fees += fee.\\n\\n**SELL** (investment → wallet): the wallet is credited quantity × unitPrice − fee; the average stays; `realizedPl` = (unitPrice − avg) × Δq − fee. Selling more than the quantity answers 422 INSUFFICIENT_QUANTITY.\\n\\nInvestment → investment is not supported. Transfers and trades never count as income or expense; they show in the `transfer` column of the daily summary and in the history of the wallet.",
                 "consumes": [
                     "application/json"
                 ],
@@ -6417,10 +6417,6 @@
                 "details": {
                     "type": "object"
                 },
-                "estimatedAnnualChangePct": {
-                    "type": "string",
-                    "example": "5.5"
-                },
                 "fees": {
                     "type": "string"
                 },
@@ -6489,11 +6485,11 @@
                 },
                 "label": {
                     "type": "string",
-                    "example": "Staked quantity"
+                    "example": "Network"
                 },
                 "name": {
                     "type": "string",
-                    "example": "stakedQuantity"
+                    "example": "network"
                 },
                 "options": {
                     "type": "array",
@@ -6563,10 +6559,6 @@
                 },
                 "details": {
                     "type": "object"
-                },
-                "estimatedAnnualChangePct": {
-                    "description": "EstimatedAnnualChangePct is the user's own assumed yearly change in percent; null when never set (there is no default).",
-                    "type": "string"
                 },
                 "fees": {
                     "type": "string"
@@ -6807,9 +6799,6 @@
                 "details": {
                     "type": "object"
                 },
-                "estimatedAnnualChangePct": {
-                    "type": "string"
-                },
                 "fees": {
                     "type": "string"
                 },
@@ -7039,10 +7028,6 @@
         "investments.TypeDefaults": {
             "type": "object",
             "properties": {
-                "estimatedAnnualChangePct": {
-                    "description": "EstimatedAnnualChangePct is always null: there is no assumed return (the field is kept so clients can rely on it).",
-                    "type": "string"
-                },
                 "fees": {
                     "type": "string"
                 },
@@ -7321,9 +7306,6 @@
                     "type": "string",
                     "example": "2026-12-31"
                 },
-                "estimatedAnnualChangePct": {
-                    "type": "string"
-                },
                 "history": {
                     "description": "detail only, newest first",
                     "type": "array",
@@ -7433,9 +7415,6 @@
                     "maxLength": 10,
                     "example": "2026-12-31"
                 },
-                "estimatedAnnualChangePct": {
-                    "type": "string"
-                },
                 "icon": {
                     "type": "string",
                     "maxLength": 64
@@ -7496,9 +7475,6 @@
                     "type": "string"
                 },
                 "dueDate": {
-                    "type": "string"
-                },
-                "estimatedAnnualChangePct": {
                     "type": "string"
                 },
                 "icon": {

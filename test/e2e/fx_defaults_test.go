@@ -4,74 +4,11 @@ package e2e
 
 import (
 	"context"
-	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// H-T4/T5 (T8): no silent assumed return. An investment created without estimatedAnnualChangePct
-// stores NULL and returns null; a client can set it, change it and clear it.
-func TestEstimatedAnnualChangeIsNotAssumed(t *testing.T) {
-	s := NewTestServer(t)
-	e := newInvEnv(s)
-
-	t.Run("absent means null", func(t *testing.T) {
-		got := e.must(clone(aapl))
-		assert.Nil(t, got.EstimatedAnnualChangePct)
-		again := e.get(got.ID)
-		assert.Nil(t, again.EstimatedAnnualChangePct)
-		var n int
-		require.NoError(t, s.Tx.QueryRow(context.Background(), `SELECT count(*) FROM investments WHERE id = $1 AND estimated_annual_change_pct IS NULL`, got.ID).Scan(&n))
-		assert.Equal(t, 1, n, "NULL in the database, not 5.5")
-	})
-
-	t.Run("a typed value is kept, including 5.5 and 0", func(t *testing.T) {
-		for _, v := range []string{"5.5", "0", "-8.25"} {
-			got := e.must(clone(aapl, "estimatedAnnualChangePct", v))
-			require.NotNil(t, got.EstimatedAnnualChangePct, v)
-			assert.True(t, dec(v).Equal(dec(*got.EstimatedAnnualChangePct)), v)
-		}
-	})
-
-	t.Run("patch sets it, clears it with null, and leaves it when absent", func(t *testing.T) {
-		got := e.must(clone(aapl))
-		res := e.patch(got.ID, map[string]any{"estimatedAnnualChangePct": "7"})
-		require.Equal(t, http.StatusOK, res.Status, string(res.Body))
-		res.JSON(t, &got)
-		require.NotNil(t, got.EstimatedAnnualChangePct)
-		assert.True(t, dec("7").Equal(dec(*got.EstimatedAnnualChangePct)))
-
-		res = e.patch(got.ID, map[string]any{"name": "Apple Inc"})
-		require.Equal(t, http.StatusOK, res.Status)
-		res.JSON(t, &got)
-		require.NotNil(t, got.EstimatedAnnualChangePct, "untouched when not sent")
-
-		res = e.patch(got.ID, map[string]any{"estimatedAnnualChangePct": nil})
-		require.Equal(t, http.StatusOK, res.Status, string(res.Body))
-		res.JSON(t, &got)
-		assert.Nil(t, got.EstimatedAnnualChangePct)
-
-		res = e.patch(got.ID, map[string]any{"estimatedAnnualChangePct": "1001"})
-		assert.Equal(t, http.StatusBadRequest, res.Status)
-	})
-
-	t.Run("the type metadata no longer advertises a default", func(t *testing.T) {
-		res := s.Get("/api/v1/investment-types", bearer(e.u.AccessToken))
-		require.Equal(t, http.StatusOK, res.Status)
-		var types []struct {
-			Defaults struct {
-				EstimatedAnnualChangePct *string `json:"estimatedAnnualChangePct"`
-			} `json:"defaults"`
-		}
-		res.JSON(t, &types)
-		require.NotEmpty(t, types)
-		for _, ty := range types {
-			assert.Nil(t, ty.Defaults.EstimatedAnnualChangePct)
-		}
-	})
-}
 
 // H-T1/H-T2 (T4): the FX rate is automatic by default. A USD stock in an IDR space with no manualFxRate is valued
 // with the stored provider rate and no warning, and the DTO says which rate was used.

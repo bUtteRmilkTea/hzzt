@@ -1,11 +1,11 @@
 -- name: CreateInvestment :one
 INSERT INTO investments (
     space_id, asset_type, price_mode, name, symbol, icon, quote_currency, quantity, avg_buy_price,
-    manual_price, fees, manual_current_value, purchase_date, estimated_annual_change_pct,
+    manual_price, fees, manual_current_value, purchase_date,
     manual_fx_rate, details, created_by_id, instrument_id, wrapper
 ) VALUES (
     $1, $2, $3, $4, sqlc.narg('symbol'), $5, $6, $7, $8,
-    $9, $10, sqlc.narg('manual_current_value'), sqlc.narg('purchase_date'), sqlc.narg('estimated_annual_change_pct'),
+    $9, $10, sqlc.narg('manual_current_value'), sqlc.narg('purchase_date'),
     sqlc.narg('manual_fx_rate'), $11, $12, sqlc.narg('instrument_id'), sqlc.narg('wrapper')
 )
 RETURNING *;
@@ -28,7 +28,7 @@ UPDATE investments SET
     price_mode = $3, name = $4, symbol = sqlc.narg('symbol'), icon = $5, quote_currency = $6,
     quantity = $7, avg_buy_price = $8, manual_price = $9, fees = $10,
     manual_current_value = sqlc.narg('manual_current_value'), purchase_date = sqlc.narg('purchase_date'),
-    estimated_annual_change_pct = sqlc.narg('estimated_annual_change_pct'), manual_fx_rate = sqlc.narg('manual_fx_rate'),
+    manual_fx_rate = sqlc.narg('manual_fx_rate'),
     details = $11, wrapper = sqlc.narg('wrapper'), updated_at = now()
 WHERE id = $1 AND space_id = $2 AND deleted_at IS NULL
 RETURNING *;

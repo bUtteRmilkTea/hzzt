@@ -694,7 +694,7 @@ Since the filter list and query are optional in any combination, the sqlc query 
 
 | asset_type | quote_currency | Auto price | details | Quantity rule |
 |---|---|---|---|---|
-| CRYPTO | USD | yes (P11) | exchange_or_wallet?, network?, staked_quantity (≤ quantity) | client sends quantity |
+| CRYPTO | USD | yes (P11) | exchange_or_wallet?, network? (staked_quantity was removed in feedback round 3) | client sends quantity |
 | ID_STOCK | IDR | no (D-04) | broker?, lots (integer ≥ 0) | **quantity = lots × 100**, server-derived |
 | US_STOCK | USD | yes (P12) | exchange (e.g. NASDAQ, NYSE), platform? | shares |
 | MUTUAL_FUND | client-chosen (default space base) | no | fund_manager?, fund_type (`MONEY_MARKET` / `FIXED_INCOME` / `EQUITY` / `BALANCED` / `OTHER`), nav_date? | units; avg_buy_price = purchase NAV; manual_price = current NAV |
@@ -808,7 +808,7 @@ Since the filter list and query are optional in any combination, the sqlc query 
   - Cost in quote currency = quantity × unit_price + fee. The wallet is debited in its own currency: if currencies differ, the client sends `amount` (wallet side) or the server converts with the P5 ConversionContext; the `fx_rate` used is stored.
   - Position: new_qty = q + Δq; new_avg = (q × avg + Δq × unit_price) / new_qty; fees += fee.
 - **SELL** (`from: {type: "INVESTMENT", investmentId, quantity, unitPrice, fee?}`, `to: WALLET`).
-  - Δq ≤ quantity − staked_quantity (`INSUFFICIENT_QUANTITY`). The average stays the same.
+  - Δq ≤ quantity (`INSUFFICIENT_QUANTITY`; the staked quantity rule was removed in feedback round 3). The average stays the same.
   - realized_pl = (unit_price − avg) × Δq − fee, stored on the transaction. The wallet is credited with the proceeds.
 - Each BUY/SELL stores `position_before` and `position_after` (quantity, avg_buy_price, fees).
 - **Edit/delete:** allowed only if the investment's current position equals `position_after`, otherwise 409 `POSITION_CHANGED_SINCE`. Reversal restores `position_before` and reverses the wallet effect.

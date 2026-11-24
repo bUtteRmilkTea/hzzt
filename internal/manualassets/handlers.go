@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 	"github.com/shopspring/decimal"
 
 	"github.com/JonathanRainee/hzzt/internal/auth"
@@ -64,19 +65,18 @@ type ValueChangeDTO struct {
 
 // AssetDTO is the public representation of a manual asset.
 type AssetDTO struct {
-	ID                       uuid.UUID        `json:"id"`
-	Kind                     string           `json:"kind" enums:"FIXED_ASSET,RECEIVABLE,LIABILITY"`
-	Name                     string           `json:"name"`
-	Icon                     string           `json:"icon"`
-	Currency                 string           `json:"currency" example:"IDR"`
-	CurrentValue             money.Amount     `json:"currentValue" swaggertype:"string" example:"500.00"` // in the asset's currency (IDR and JPY: no decimals, others 2); a liability's outstanding amount
-	CounterpartyName         *string          `json:"counterpartyName"`
-	DueDate                  *string          `json:"dueDate" example:"2026-12-31"`
-	EstimatedAnnualChangePct *decimal.Decimal `json:"estimatedAnnualChangePct" swaggertype:"string"`
-	Note                     *string          `json:"note"`
-	History                  []ValueChangeDTO `json:"history,omitempty"` // detail only, newest first
-	CreatedAt                time.Time        `json:"createdAt"`
-	UpdatedAt                time.Time        `json:"updatedAt"`
+	ID               uuid.UUID        `json:"id"`
+	Kind             string           `json:"kind" enums:"FIXED_ASSET,RECEIVABLE,LIABILITY"`
+	Name             string           `json:"name"`
+	Icon             string           `json:"icon"`
+	Currency         string           `json:"currency" example:"IDR"`
+	CurrentValue     money.Amount     `json:"currentValue" swaggertype:"string" example:"500.00"` // in the asset's currency (IDR and JPY: no decimals, others 2); a liability's outstanding amount
+	CounterpartyName *string          `json:"counterpartyName"`
+	DueDate          *string          `json:"dueDate" example:"2026-12-31"`
+	Note             *string          `json:"note"`
+	History          []ValueChangeDTO `json:"history,omitempty"` // detail only, newest first
+	CreatedAt        time.Time        `json:"createdAt"`
+	UpdatedAt        time.Time        `json:"updatedAt"`
 }
 
 func toDTO(a Asset) AssetDTO {
@@ -87,10 +87,6 @@ func toDTO(a Asset) AssetDTO {
 	if a.DueDate != nil {
 		s := a.DueDate.Format("2006-01-02")
 		d.DueDate = &s
-	}
-	if a.EstimatedAnnualChangePct.Valid {
-		v := a.EstimatedAnnualChangePct.Decimal
-		d.EstimatedAnnualChangePct = &v
 	}
 	for _, h := range a.History {
 		c := ValueChangeDTO{PreviousValue: money.NewAmount(h.PreviousValue, a.Currency), NewValue: money.NewAmount(h.NewValue, a.Currency), Reason: h.Reason, ChangedAt: h.ChangedAt.UTC()}
@@ -110,15 +106,17 @@ type ListResponse struct {
 }
 
 type createRequest struct {
-	Kind                     string           `json:"kind" validate:"required,oneof=FIXED_ASSET RECEIVABLE LIABILITY"`
-	Name                     string           `json:"name" validate:"required,min=1,max=120"`
-	Icon                     *string          `json:"icon" validate:"omitempty,max=64"`
-	Currency                 *string          `json:"currency" validate:"omitempty,max=8"`
-	CurrentValue             *decimal.Decimal `json:"currentValue" validate:"required" swaggertype:"string" example:"500"`
-	CounterpartyName         *string          `json:"counterpartyName" validate:"omitempty,max=120"`
-	DueDate                  *string          `json:"dueDate" validate:"omitempty,max=10" example:"2026-12-31"`
-	EstimatedAnnualChangePct *decimal.Decimal `json:"estimatedAnnualChangePct" swaggertype:"string"`
-	Note                     *string          `json:"note" validate:"omitempty,max=2000"`
+	Kind             string           `json:"kind" validate:"required,oneof=FIXED_ASSET RECEIVABLE LIABILITY"`
+	Name             string           `json:"name" validate:"required,min=1,max=120"`
+	Icon             *string          `json:"icon" validate:"omitempty,max=64"`
+	Currency         *string          `json:"currency" validate:"omitempty,max=8"`
+	CurrentValue     *decimal.Decimal `json:"currentValue" validate:"required" swaggertype:"string" example:"500"`
+	CounterpartyName *string          `json:"counterpartyName" validate:"omitempty,max=120"`
+	DueDate          *string          `json:"dueDate" validate:"omitempty,max=10" example:"2026-12-31"`
+	// EstimatedAnnualChangePct is removed: accepted and ignored for one release (old clients).
+	// Deprecated: remove next release.
+	EstimatedAnnualChangePct json.RawMessage `json:"estimatedAnnualChangePct,omitempty" swaggerignore:"true"`
+	Note                     *string         `json:"note" validate:"omitempty,max=2000"`
 }
 
 type nullable[T any] struct {
@@ -140,14 +138,16 @@ func (n *nullable[T]) UnmarshalJSON(b []byte) error {
 }
 
 type updateRequest struct {
-	Name                     *string                   `json:"name" validate:"omitempty,min=1,max=120"`
-	Icon                     *string                   `json:"icon" validate:"omitempty,max=64"`
-	Currency                 *string                   `json:"currency" validate:"omitempty,max=8"`
-	CurrentValue             *decimal.Decimal          `json:"currentValue" swaggertype:"string"`
-	CounterpartyName         nullable[string]          `json:"counterpartyName" swaggertype:"string"`
-	DueDate                  nullable[string]          `json:"dueDate" swaggertype:"string"`
-	EstimatedAnnualChangePct nullable[decimal.Decimal] `json:"estimatedAnnualChangePct" swaggertype:"string"`
-	Note                     nullable[string]          `json:"note" swaggertype:"string"`
+	Name             *string          `json:"name" validate:"omitempty,min=1,max=120"`
+	Icon             *string          `json:"icon" validate:"omitempty,max=64"`
+	Currency         *string          `json:"currency" validate:"omitempty,max=8"`
+	CurrentValue     *decimal.Decimal `json:"currentValue" swaggertype:"string"`
+	CounterpartyName nullable[string] `json:"counterpartyName" swaggertype:"string"`
+	DueDate          nullable[string] `json:"dueDate" swaggertype:"string"`
+	// EstimatedAnnualChangePct is removed: accepted and ignored for one release (old clients).
+	// Deprecated: remove next release.
+	EstimatedAnnualChangePct json.RawMessage  `json:"estimatedAnnualChangePct,omitempty" swaggerignore:"true"`
+	Note                     nullable[string] `json:"note" swaggertype:"string"`
 }
 
 type settleRequest struct {
@@ -247,17 +247,6 @@ func parseDate(f map[string]any, field string, s *string) *time.Time {
 	return &t
 }
 
-func checkChange(f map[string]any, d *decimal.Decimal) {
-	if d == nil {
-		return
-	}
-	if d.LessThan(decimal.NewFromInt(-100)) || d.GreaterThan(decimal.NewFromInt(1000)) {
-		f["estimatedAnnualChangePct"] = "must be between -100 and 1000"
-	} else if !d.Round(4).Equal(*d) {
-		f["estimatedAnnualChangePct"] = "must have at most 4 decimal places"
-	}
-}
-
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
@@ -308,7 +297,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 // create godoc
 //
 //	@Summary		Create a fixed asset, a receivable (money owed to me) or a liability (debt)
-//	@Description	For a liability `currentValue` is the outstanding amount. `estimatedAnnualChangePct` applies to fixed assets only.
+//	@Description	For a liability `currentValue` is the outstanding amount.
 //	@Tags			manual-assets
 //	@Security		BearerAuth
 //	@Accept			json
@@ -341,12 +330,8 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	in.Counterparty = cleanText(f, "counterpartyName", req.CounterpartyName, 60)
 	in.Note = cleanText(f, "note", req.Note, 1000)
 	in.DueDate = parseDate(f, "dueDate", req.DueDate)
-	checkChange(f, req.EstimatedAnnualChangePct)
-	if req.EstimatedAnnualChangePct != nil {
-		if req.Kind != KindFixedAsset {
-			f["estimatedAnnualChangePct"] = "only applies to fixed assets"
-		}
-		in.EstimatedChange = req.EstimatedAnnualChangePct
+	if len(req.EstimatedAnnualChangePct) > 0 {
+		log.Warn().Str("where", "create").Msg("deprecated request field ignored: estimatedAnnualChangePct")
 	}
 	if err := fieldsErr(f); err != nil {
 		httpx.WriteError(w, r, err)
@@ -387,7 +372,7 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 // update godoc
 //
 //	@Summary		Update an asset
-//	@Description	Changing `currentValue` is recorded in the value history. `counterpartyName`, `dueDate`, `estimatedAnnualChangePct` and `note` accept null to clear. The currency can only change while the asset has no settlements (MANUAL_ASSET_CURRENCY_LOCKED).
+//	@Description	Changing `currentValue` is recorded in the value history. `counterpartyName`, `dueDate` and `note` accept null to clear. The currency can only change while the asset has no settlements (MANUAL_ASSET_CURRENCY_LOCKED).
 //	@Tags			manual-assets
 //	@Security		BearerAuth
 //	@Accept			json
@@ -423,9 +408,8 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	if req.DueDate.Set {
 		in.DueDate = Optional[time.Time]{Set: true, Value: parseDate(f, "dueDate", req.DueDate.Value)}
 	}
-	if req.EstimatedAnnualChangePct.Set {
-		checkChange(f, req.EstimatedAnnualChangePct.Value)
-		in.EstimatedChange = Optional[decimal.Decimal]{Set: true, Value: req.EstimatedAnnualChangePct.Value}
+	if len(req.EstimatedAnnualChangePct) > 0 {
+		log.Warn().Str("where", "patch").Msg("deprecated request field ignored: estimatedAnnualChangePct")
 	}
 	if err := fieldsErr(f); err != nil {
 		httpx.WriteError(w, r, err)

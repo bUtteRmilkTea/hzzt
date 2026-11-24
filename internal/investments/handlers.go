@@ -91,8 +91,6 @@ type InvestmentDTO struct {
 	Fees               decimal.Decimal  `json:"fees" swaggertype:"string"`
 	ManualCurrentValue *decimal.Decimal `json:"manualCurrentValue" swaggertype:"string"`
 	PurchaseDate       *string          `json:"purchaseDate" example:"2026-01-31"`
-	// EstimatedAnnualChangePct is the user's own assumed yearly change in percent; null when never set (there is no default).
-	EstimatedAnnualChangePct *decimal.Decimal `json:"estimatedAnnualChangePct" swaggertype:"string"`
 	// ManualFxRate is an optional per-investment override, used only when the space's automatic FX is off.
 	ManualFxRate *decimal.Decimal `json:"manualFxRate" swaggertype:"string"`
 	// FxRate, FxSource and FxAsOf describe the quote-to-base rate behind valuation.base: the rate used (base units per 1 quote
@@ -173,10 +171,6 @@ func toDTO(it Item) InvestmentDTO {
 	if i.ManualCurrentValue.Valid {
 		v := i.ManualCurrentValue.Decimal
 		d.ManualCurrentValue = &v
-	}
-	if i.EstimatedAnnualChangePct.Valid {
-		v := i.EstimatedAnnualChangePct.Decimal
-		d.EstimatedAnnualChangePct = &v
 	}
 	if i.ManualFxRate.Valid {
 		v := i.ManualFxRate.Decimal
@@ -303,7 +297,7 @@ type CreateRequestDoc struct {
 // create godoc
 //
 //	@Summary		Create an investment
-//	@Description	The body is validated by `assetType` (see GET /investment-types). ID_STOCK takes `details.lots` and derives quantity = lots × 100. CRYPTO checks `details.stakedQuantity` <= quantity. `priceMode: AUTO` is accepted for CRYPTO, US_STOCK and GLOBAL_ETF and answers 422 AUTO_PRICE_NOT_SUPPORTED otherwise. A CRYPTO created without `priceMode` is AUTO by default and linked to its CoinMarketCap coin by symbol; if the symbol is unknown or ambiguous the holding is created as MANUAL and `valuation.warnings` carries `PRICE_NOT_LINKED` (an explicit `priceMode` never falls back). Valuation warnings also include `PRICE_STALE` (a stale market price still counts and is flagged) and `MANUAL_VALUE_OVERRIDES_MARKET` (an AUTO holding with a manual current value, which wins). An AUTO investment is linked to a market instrument: send the `instrumentId` picked from GET /market/crypto/search (CRYPTO) or GET /market/stocks/search (US_STOCK, GLOBAL_ETF), or the symbol is resolved to the highest-ranked coin / the exact ticker (422 INSTRUMENT_NOT_FOUND if none matches). Without a market price the manual price is used. Optional `funding: {walletId, amount?}` pays for the initial position from a wallet: it creates a BUY titled "Initial position {symbol}" (wallet debited quantity × avgBuyPrice + fees, converted to the wallet's currency unless `amount` is given) in the same database transaction.
+//	@Description	The body is validated by `assetType` (see GET /investment-types). ID_STOCK takes `details.lots` and derives quantity = lots × 100. `priceMode: AUTO` is accepted for CRYPTO, US_STOCK and GLOBAL_ETF and answers 422 AUTO_PRICE_NOT_SUPPORTED otherwise. A CRYPTO created without `priceMode` is AUTO by default and linked to its CoinMarketCap coin by symbol; if the symbol is unknown or ambiguous the holding is created as MANUAL and `valuation.warnings` carries `PRICE_NOT_LINKED` (an explicit `priceMode` never falls back). Valuation warnings also include `PRICE_STALE` (a stale market price still counts and is flagged) and `MANUAL_VALUE_OVERRIDES_MARKET` (an AUTO holding with a manual current value, which wins). An AUTO investment is linked to a market instrument: send the `instrumentId` picked from GET /market/crypto/search (CRYPTO) or GET /market/stocks/search (US_STOCK, GLOBAL_ETF), or the symbol is resolved to the highest-ranked coin / the exact ticker (422 INSTRUMENT_NOT_FOUND if none matches). Without a market price the manual price is used. Optional `funding: {walletId, amount?}` pays for the initial position from a wallet: it creates a BUY titled "Initial position {symbol}" (wallet debited quantity × avgBuyPrice + fees, converted to the wallet's currency unless `amount` is given) in the same database transaction.
 //	@Tags			investments
 //	@Security		BearerAuth
 //	@Accept			json

@@ -15,24 +15,23 @@ import (
 
 const createManualAsset = `-- name: CreateManualAsset :one
 INSERT INTO manual_assets (space_id, kind, name, icon, currency, current_value, counterparty_name, due_date,
-                           estimated_annual_change_pct, note, created_by_id)
+                           note, created_by_id)
 VALUES ($1, $2, $3, $4, $5, $6, $8, $9,
-        $10, $11, $7)
-RETURNING id, space_id, kind, name, icon, currency, current_value, counterparty_name, due_date, estimated_annual_change_pct, note, created_by_id, created_at, updated_at, deleted_at
+        $10, $7)
+RETURNING id, space_id, kind, name, icon, currency, current_value, counterparty_name, due_date, note, created_by_id, created_at, updated_at, deleted_at
 `
 
 type CreateManualAssetParams struct {
-	SpaceID                  uuid.UUID           `json:"space_id"`
-	Kind                     string              `json:"kind"`
-	Name                     string              `json:"name"`
-	Icon                     string              `json:"icon"`
-	Currency                 string              `json:"currency"`
-	CurrentValue             decimal.Decimal     `json:"current_value"`
-	CreatedByID              uuid.UUID           `json:"created_by_id"`
-	CounterpartyName         *string             `json:"counterparty_name"`
-	DueDate                  *time.Time          `json:"due_date"`
-	EstimatedAnnualChangePct decimal.NullDecimal `json:"estimated_annual_change_pct"`
-	Note                     *string             `json:"note"`
+	SpaceID          uuid.UUID       `json:"space_id"`
+	Kind             string          `json:"kind"`
+	Name             string          `json:"name"`
+	Icon             string          `json:"icon"`
+	Currency         string          `json:"currency"`
+	CurrentValue     decimal.Decimal `json:"current_value"`
+	CreatedByID      uuid.UUID       `json:"created_by_id"`
+	CounterpartyName *string         `json:"counterparty_name"`
+	DueDate          *time.Time      `json:"due_date"`
+	Note             *string         `json:"note"`
 }
 
 func (q *Queries) CreateManualAsset(ctx context.Context, arg CreateManualAssetParams) (ManualAsset, error) {
@@ -46,7 +45,6 @@ func (q *Queries) CreateManualAsset(ctx context.Context, arg CreateManualAssetPa
 		arg.CreatedByID,
 		arg.CounterpartyName,
 		arg.DueDate,
-		arg.EstimatedAnnualChangePct,
 		arg.Note,
 	)
 	var i ManualAsset
@@ -60,7 +58,6 @@ func (q *Queries) CreateManualAsset(ctx context.Context, arg CreateManualAssetPa
 		&i.CurrentValue,
 		&i.CounterpartyName,
 		&i.DueDate,
-		&i.EstimatedAnnualChangePct,
 		&i.Note,
 		&i.CreatedByID,
 		&i.CreatedAt,
@@ -71,7 +68,7 @@ func (q *Queries) CreateManualAsset(ctx context.Context, arg CreateManualAssetPa
 }
 
 const getManualAsset = `-- name: GetManualAsset :one
-SELECT id, space_id, kind, name, icon, currency, current_value, counterparty_name, due_date, estimated_annual_change_pct, note, created_by_id, created_at, updated_at, deleted_at FROM manual_assets WHERE id = $1 AND space_id = $2 AND deleted_at IS NULL
+SELECT id, space_id, kind, name, icon, currency, current_value, counterparty_name, due_date, note, created_by_id, created_at, updated_at, deleted_at FROM manual_assets WHERE id = $1 AND space_id = $2 AND deleted_at IS NULL
 `
 
 type GetManualAssetParams struct {
@@ -92,7 +89,6 @@ func (q *Queries) GetManualAsset(ctx context.Context, arg GetManualAssetParams) 
 		&i.CurrentValue,
 		&i.CounterpartyName,
 		&i.DueDate,
-		&i.EstimatedAnnualChangePct,
 		&i.Note,
 		&i.CreatedByID,
 		&i.CreatedAt,
@@ -103,7 +99,7 @@ func (q *Queries) GetManualAsset(ctx context.Context, arg GetManualAssetParams) 
 }
 
 const getManualAssetAnyForUpdate = `-- name: GetManualAssetAnyForUpdate :one
-SELECT id, space_id, kind, name, icon, currency, current_value, counterparty_name, due_date, estimated_annual_change_pct, note, created_by_id, created_at, updated_at, deleted_at FROM manual_assets WHERE id = $1 AND space_id = $2 FOR UPDATE
+SELECT id, space_id, kind, name, icon, currency, current_value, counterparty_name, due_date, note, created_by_id, created_at, updated_at, deleted_at FROM manual_assets WHERE id = $1 AND space_id = $2 FOR UPDATE
 `
 
 type GetManualAssetAnyForUpdateParams struct {
@@ -125,7 +121,6 @@ func (q *Queries) GetManualAssetAnyForUpdate(ctx context.Context, arg GetManualA
 		&i.CurrentValue,
 		&i.CounterpartyName,
 		&i.DueDate,
-		&i.EstimatedAnnualChangePct,
 		&i.Note,
 		&i.CreatedByID,
 		&i.CreatedAt,
@@ -136,7 +131,7 @@ func (q *Queries) GetManualAssetAnyForUpdate(ctx context.Context, arg GetManualA
 }
 
 const getManualAssetForUpdate = `-- name: GetManualAssetForUpdate :one
-SELECT id, space_id, kind, name, icon, currency, current_value, counterparty_name, due_date, estimated_annual_change_pct, note, created_by_id, created_at, updated_at, deleted_at FROM manual_assets WHERE id = $1 AND space_id = $2 AND deleted_at IS NULL FOR UPDATE
+SELECT id, space_id, kind, name, icon, currency, current_value, counterparty_name, due_date, note, created_by_id, created_at, updated_at, deleted_at FROM manual_assets WHERE id = $1 AND space_id = $2 AND deleted_at IS NULL FOR UPDATE
 `
 
 type GetManualAssetForUpdateParams struct {
@@ -157,7 +152,6 @@ func (q *Queries) GetManualAssetForUpdate(ctx context.Context, arg GetManualAsse
 		&i.CurrentValue,
 		&i.CounterpartyName,
 		&i.DueDate,
-		&i.EstimatedAnnualChangePct,
 		&i.Note,
 		&i.CreatedByID,
 		&i.CreatedAt,
@@ -192,7 +186,7 @@ func (q *Queries) InsertValueChange(ctx context.Context, arg InsertValueChangePa
 }
 
 const listManualAssets = `-- name: ListManualAssets :many
-SELECT id, space_id, kind, name, icon, currency, current_value, counterparty_name, due_date, estimated_annual_change_pct, note, created_by_id, created_at, updated_at, deleted_at FROM manual_assets
+SELECT id, space_id, kind, name, icon, currency, current_value, counterparty_name, due_date, note, created_by_id, created_at, updated_at, deleted_at FROM manual_assets
 WHERE space_id = $1 AND deleted_at IS NULL
   AND ($2::text IS NULL OR kind = $2::text)
 ORDER BY kind, created_at, id
@@ -222,7 +216,6 @@ func (q *Queries) ListManualAssets(ctx context.Context, arg ListManualAssetsPara
 			&i.CurrentValue,
 			&i.CounterpartyName,
 			&i.DueDate,
-			&i.EstimatedAnnualChangePct,
 			&i.Note,
 			&i.CreatedByID,
 			&i.CreatedAt,
@@ -317,23 +310,22 @@ const updateManualAsset = `-- name: UpdateManualAsset :one
 UPDATE manual_assets SET
     name = $3, icon = $4, currency = $5, current_value = $6,
     counterparty_name = $7, due_date = $8,
-    estimated_annual_change_pct = $9, note = $10,
+    note = $9,
     updated_at = now()
 WHERE id = $1 AND space_id = $2 AND deleted_at IS NULL
-RETURNING id, space_id, kind, name, icon, currency, current_value, counterparty_name, due_date, estimated_annual_change_pct, note, created_by_id, created_at, updated_at, deleted_at
+RETURNING id, space_id, kind, name, icon, currency, current_value, counterparty_name, due_date, note, created_by_id, created_at, updated_at, deleted_at
 `
 
 type UpdateManualAssetParams struct {
-	ID                       uuid.UUID           `json:"id"`
-	SpaceID                  uuid.UUID           `json:"space_id"`
-	Name                     string              `json:"name"`
-	Icon                     string              `json:"icon"`
-	Currency                 string              `json:"currency"`
-	CurrentValue             decimal.Decimal     `json:"current_value"`
-	CounterpartyName         *string             `json:"counterparty_name"`
-	DueDate                  *time.Time          `json:"due_date"`
-	EstimatedAnnualChangePct decimal.NullDecimal `json:"estimated_annual_change_pct"`
-	Note                     *string             `json:"note"`
+	ID               uuid.UUID       `json:"id"`
+	SpaceID          uuid.UUID       `json:"space_id"`
+	Name             string          `json:"name"`
+	Icon             string          `json:"icon"`
+	Currency         string          `json:"currency"`
+	CurrentValue     decimal.Decimal `json:"current_value"`
+	CounterpartyName *string         `json:"counterparty_name"`
+	DueDate          *time.Time      `json:"due_date"`
+	Note             *string         `json:"note"`
 }
 
 // Full replacement of the editable columns: the service computes the final values.
@@ -347,7 +339,6 @@ func (q *Queries) UpdateManualAsset(ctx context.Context, arg UpdateManualAssetPa
 		arg.CurrentValue,
 		arg.CounterpartyName,
 		arg.DueDate,
-		arg.EstimatedAnnualChangePct,
 		arg.Note,
 	)
 	var i ManualAsset
@@ -361,7 +352,6 @@ func (q *Queries) UpdateManualAsset(ctx context.Context, arg UpdateManualAssetPa
 		&i.CurrentValue,
 		&i.CounterpartyName,
 		&i.DueDate,
-		&i.EstimatedAnnualChangePct,
 		&i.Note,
 		&i.CreatedByID,
 		&i.CreatedAt,

@@ -14,17 +14,16 @@ import (
 )
 
 type assetBody struct {
-	ID                       string  `json:"id"`
-	Kind                     string  `json:"kind"`
-	Name                     string  `json:"name"`
-	Icon                     string  `json:"icon"`
-	Currency                 string  `json:"currency"`
-	CurrentValue             string  `json:"currentValue"`
-	CounterpartyName         *string `json:"counterpartyName"`
-	DueDate                  *string `json:"dueDate"`
-	EstimatedAnnualChangePct *string `json:"estimatedAnnualChangePct"`
-	Note                     *string `json:"note"`
-	History                  []struct {
+	ID               string  `json:"id"`
+	Kind             string  `json:"kind"`
+	Name             string  `json:"name"`
+	Icon             string  `json:"icon"`
+	Currency         string  `json:"currency"`
+	CurrentValue     string  `json:"currentValue"`
+	CounterpartyName *string `json:"counterpartyName"`
+	DueDate          *string `json:"dueDate"`
+	Note             *string `json:"note"`
+	History          []struct {
 		PreviousValue string  `json:"previousValue"`
 		NewValue      string  `json:"newValue"`
 		Reason        string  `json:"reason"`
@@ -120,11 +119,10 @@ func TestManualAssetCRUD(t *testing.T) {
 
 	t.Run("create each kind with defaults", func(t *testing.T) {
 		car := e.must(map[string]any{"kind": "FIXED_ASSET", "name": "  Car  ", "currentValue": "160000000", "currency": "idr",
-			"estimatedAnnualChangePct": "-8.5", "note": "Toyota", "dueDate": "2030-01-31"})
+			"note": "Toyota", "dueDate": "2030-01-31"})
 		assert.Equal(t, "Car", car.Name)
 		assert.Equal(t, "IDR", car.Currency)
 		assert.Equal(t, "🏠", car.Icon, "a default icon per kind")
-		assert.Equal(t, "-8.5", *car.EstimatedAnnualChangePct)
 		assert.Equal(t, "2030-01-31", *car.DueDate)
 		require.Len(t, car.History, 1, "the first value is part of the history")
 		assert.Equal(t, "0", car.History[0].PreviousValue)
@@ -135,27 +133,24 @@ func TestManualAssetCRUD(t *testing.T) {
 		assert.Equal(t, "💸", owed.Icon)
 		d := e.must(debt("Credit card", "500"))
 		assert.Equal(t, "💳", d.Icon)
-		assert.Nil(t, d.EstimatedAnnualChangePct)
 	})
 
 	t.Run("validation", func(t *testing.T) {
 		mk := func(mod func(m map[string]any)) map[string]any { m := debt("Valid", "10"); mod(m); return m }
 		for name, body := range map[string]map[string]any{
-			"bad kind":            mk(func(m map[string]any) { m["kind"] = "GIFT" }),
-			"missing name":        mk(func(m map[string]any) { delete(m, "name") }),
-			"blank name":          mk(func(m map[string]any) { m["name"] = " " }),
-			"long name":           mk(func(m map[string]any) { m["name"] = strings.Repeat("x", 61) }),
-			"missing value":       mk(func(m map[string]any) { delete(m, "currentValue") }),
-			"negative value":      mk(func(m map[string]any) { m["currentValue"] = "-1" }),
-			"9 decimals":          mk(func(m map[string]any) { m["currentValue"] = "1.123456789" }),
-			"huge":                mk(func(m map[string]any) { m["currentValue"] = "100000000000000000000" }),
-			"bad currency":        mk(func(m map[string]any) { m["currency"] = "XXX" }),
-			"bad date":            mk(func(m map[string]any) { m["dueDate"] = "soon" }),
-			"long note":           mk(func(m map[string]any) { m["note"] = strings.Repeat("n", 1001) }),
-			"long counterparty":   mk(func(m map[string]any) { m["counterpartyName"] = strings.Repeat("c", 61) }),
-			"change on a debt":    mk(func(m map[string]any) { m["estimatedAnnualChangePct"] = "5" }),
-			"change out of range": {"kind": "FIXED_ASSET", "name": "x", "currentValue": "1", "estimatedAnnualChangePct": "1001"},
-			"unknown field":       mk(func(m map[string]any) { m["settled"] = true }),
+			"bad kind":          mk(func(m map[string]any) { m["kind"] = "GIFT" }),
+			"missing name":      mk(func(m map[string]any) { delete(m, "name") }),
+			"blank name":        mk(func(m map[string]any) { m["name"] = " " }),
+			"long name":         mk(func(m map[string]any) { m["name"] = strings.Repeat("x", 61) }),
+			"missing value":     mk(func(m map[string]any) { delete(m, "currentValue") }),
+			"negative value":    mk(func(m map[string]any) { m["currentValue"] = "-1" }),
+			"9 decimals":        mk(func(m map[string]any) { m["currentValue"] = "1.123456789" }),
+			"huge":              mk(func(m map[string]any) { m["currentValue"] = "100000000000000000000" }),
+			"bad currency":      mk(func(m map[string]any) { m["currency"] = "XXX" }),
+			"bad date":          mk(func(m map[string]any) { m["dueDate"] = "soon" }),
+			"long note":         mk(func(m map[string]any) { m["note"] = strings.Repeat("n", 1001) }),
+			"long counterparty": mk(func(m map[string]any) { m["counterpartyName"] = strings.Repeat("c", 61) }),
+			"unknown field":     mk(func(m map[string]any) { m["settled"] = true }),
 		} {
 			res := e.post(body)
 			assert.Equal(t, http.StatusBadRequest, res.Status, "%s: %s", name, res.Body)
@@ -195,7 +190,7 @@ func TestManualAssetCRUD(t *testing.T) {
 func TestManualAssetUpdateAndHistory(t *testing.T) {
 	s := NewTestServer(t)
 	e := newAssetEnv(t, s)
-	house := e.must(map[string]any{"kind": "FIXED_ASSET", "name": "House", "currentValue": "300000", "estimatedAnnualChangePct": "3", "counterpartyName": "Bank", "dueDate": "2040-01-01", "note": "mortgaged"})
+	house := e.must(map[string]any{"kind": "FIXED_ASSET", "name": "House", "currentValue": "300000", "counterpartyName": "Bank", "dueDate": "2040-01-01", "note": "mortgaged"})
 
 	t.Run("every value change is recorded", func(t *testing.T) {
 		res := e.patch(house.ID, map[string]any{"currentValue": "310000.5", "name": "Family house"})
@@ -215,13 +210,12 @@ func TestManualAssetUpdateAndHistory(t *testing.T) {
 	})
 
 	t.Run("null clears the optional fields", func(t *testing.T) {
-		res := e.patch(house.ID, map[string]any{"counterpartyName": nil, "dueDate": nil, "estimatedAnnualChangePct": nil, "note": nil})
+		res := e.patch(house.ID, map[string]any{"counterpartyName": nil, "dueDate": nil, "note": nil})
 		require.Equal(t, http.StatusOK, res.Status, string(res.Body))
 		var got assetBody
 		res.JSON(t, &got)
 		assert.Nil(t, got.CounterpartyName)
 		assert.Nil(t, got.DueDate)
-		assert.Nil(t, got.EstimatedAnnualChangePct)
 		assert.Nil(t, got.Note)
 		assert.Equal(t, "Home", got.Name, "everything else stays")
 	})
@@ -233,9 +227,6 @@ func TestManualAssetUpdateAndHistory(t *testing.T) {
 		} {
 			assert.Equal(t, http.StatusBadRequest, e.patch(house.ID, body).Status, name)
 		}
-		debtor := e.must(debt("Card", "10"))
-		res := e.patch(debtor.ID, map[string]any{"estimatedAnnualChangePct": "5"})
-		assert.Equal(t, http.StatusBadRequest, res.Status, "only fixed assets have an estimated change")
 		for _, id := range []string{uuid.NewString(), "nope"} {
 			res := e.patch(id, map[string]any{"name": "x"})
 			require.Equal(t, http.StatusNotFound, res.Status)

@@ -189,7 +189,7 @@ func newTestServer(t *testing.T, limits auth.Limits, userLimits users.Limits, in
 	walletsHandler := wallets.NewHandler(walletsSvc, svc, spacesSvc)
 	transactionsSvc := transactions.NewService(tx, currencySvc, clock.Now)
 	categoriesSvc.SetUsageChecker(transactionsSvc.CategoryInUse)
-	transactionsHandler := transactions.NewHandler(transactionsSvc, svc, spacesSvc)
+	transactionsHandler := transactions.NewHandler(transactionsSvc, svc, spacesSvc, walletsSvc)
 	cmc := &FakeCMC{now: clock.Now, Coins: defaultCoins(), Quotes: map[int64]string{1: "63000", 1027: "1800", 825: "1", 5426: "150"}}
 	mas := newFakeMassive()
 	marketSvc := marketdata.NewService(tx, marketdata.Options{
@@ -205,7 +205,7 @@ func newTestServer(t *testing.T, limits auth.Limits, userLimits users.Limits, in
 	goalsHandler := goals.NewHandler(goalsSvc, svc, spacesSvc)
 	manualAssetsSvc := manualassets.NewService(tx, currencySvc, transactionsSvc, clock.Now)
 	manualAssetsHandler := manualassets.NewHandler(manualAssetsSvc, svc, spacesSvc)
-	networthSvc := networth.NewService(tx, currencySvc, investmentsSvc, manualAssetsSvc, clock.Now)
+	networthSvc := networth.NewService(tx, currencySvc, investmentsSvc, walletsSvc, manualAssetsSvc, clock.Now)
 	networthSvc.SetRunner(jobs.New(tx, log, clock.Now))
 	dashboardHandler := dashboard.NewHandler(dashboard.NewService(tx, currencySvc, clock.Now), svc, spacesSvc)
 	networthHandler := networth.NewHandler(networthSvc, svc, spacesSvc)

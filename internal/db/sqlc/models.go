@@ -347,4 +347,28 @@ type Wallet struct {
 	CreatedAt   time.Time       `json:"created_at"`
 	UpdatedAt   time.Time       `json:"updated_at"`
 	DeletedAt   *time.Time      `json:"deleted_at"`
+	IsShared    bool            `json:"is_shared"`
+}
+
+type WalletParticipant struct {
+	ID              uuid.UUID     `json:"id"`
+	WalletID        uuid.UUID     `json:"wallet_id"`
+	Role            string        `json:"role"`
+	UserID          uuid.NullUUID `json:"user_id"`
+	DisplayName     string        `json:"display_name"`
+	Email           *string       `json:"email"`
+	ShareBps        int32         `json:"share_bps"`
+	Status          string        `json:"status"`
+	AttachedSpaceID uuid.NullUUID `json:"attached_space_id"`
+	InvitedAt       time.Time     `json:"invited_at"`
+	RespondedAt     *time.Time    `json:"responded_at"`
+}
+
+type WalletShareChange struct {
+	ID          uuid.UUID `json:"id"`
+	WalletID    uuid.UUID `json:"wallet_id"`
+	ChangedByID uuid.UUID `json:"changed_by_id"`
+	Before      []byte    `json:"before"`
+	After       []byte    `json:"after"`
+	CreatedAt   time.Time `json:"created_at"`
 }

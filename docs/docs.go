@@ -1238,6 +1238,177 @@ const docTemplate = `{
                 }
             }
         },
+        "/me/shared-wallet-invitations": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Invitations addressed to my account or to my account's email (case-insensitive), including ones sent before I registered. Shows the wallet and my share, never the owner's space.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "wallet-sharing"
+                ],
+                "summary": "My pending shared-wallet invitations",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/wallets.InvitationDTO"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/me/shared-wallet-invitations/{participantId}/accept": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "The wallet is attached to the given space (you must be a member of it, and it must not be the owner's space); that space then counts my share and lists it with ` + "`" + `include=shared` + "`" + `.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "wallet-sharing"
+                ],
+                "summary": "Accept a shared-wallet invitation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Invitation (participant) ID",
+                        "name": "participantId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Space to attach it to",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/wallets.acceptRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/wallets.AcceptResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "SHARE_INVITATION_ANSWERED",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/me/shared-wallet-invitations/{participantId}/decline": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "wallet-sharing"
+                ],
+                "summary": "Decline a shared-wallet invitation (the share stays allocated until the owner changes it)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Invitation (participant) ID",
+                        "name": "participantId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "SHARE_INVITATION_ANSWERED",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/me/shared-wallets/{participantId}/leave": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "My share stays allocated but becomes a name-only participant; the owner finds the change in the audit trail.",
+                "tags": [
+                    "wallet-sharing"
+                ],
+                "summary": "Leave a shared wallet",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "My participant ID",
+                        "name": "participantId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "422": {
+                        "description": "SHARE_OWNER_CANNOT_LEAVE",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/spaces": {
             "get": {
                 "security": [
@@ -5086,7 +5257,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Favorites first, then sortOrder. ` + "`" + `total` + "`" + ` is converted to the space base currency; wallets without a usable FX rate are left out and reported in ` + "`" + `total.warnings` + "`" + `. Each item also carries ` + "`" + `baseBalance` + "`" + ` and ` + "`" + `pctOfTotal` + "`" + ` (percent of the total, 2 decimals, adding up to exactly 100.00; null without an FX rate) for pie charts.",
+                "description": "Favorites first, then sortOrder. ` + "`" + `total` + "`" + ` is converted to the space base currency; wallets without a usable FX rate are left out and reported in ` + "`" + `total.warnings` + "`" + `. Each item also carries ` + "`" + `baseBalance` + "`" + ` and ` + "`" + `pctOfTotal` + "`" + ` (percent of the total, 2 decimals, adding up to exactly 100.00; null without an FX rate) for pie charts. With ` + "`" + `?include=shared` + "`" + `, also lists wallets shared into this space by another space's owner: these come back ` + "`" + `ownership: SHARED_IN` + "`" + `, read-only, with ` + "`" + `myShareBps` + "`" + ` and ` + "`" + `myBalance` + "`" + ` (my share of the wallet's balance); they are not part of ` + "`" + `total` + "`" + `.",
                 "produces": [
                     "application/json"
                 ],
@@ -5101,6 +5272,12 @@ const docTemplate = `{
                         "name": "spaceId",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "shared: also include wallets shared into this space",
+                        "name": "include",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -5573,6 +5750,248 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "space or WALLET_NOT_FOUND",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/spaces/{spaceId}/wallets/{id}/participants": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "wallet-sharing"
+                ],
+                "summary": "List who a wallet is shared with (owner only)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Space ID",
+                        "name": "spaceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Wallet ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/wallets.ParticipantsResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "OWNER_ONLY",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Full replacement. Include yourself (` + "`" + `isOwner: true` + "`" + `, or your own email) with a share above 0. Shares are percentages with up to 2 decimals and the shares of all participants must add up to exactly 100.00 (422 SHARE_TOTAL_INVALID); at most 10 people (422 PARTICIPANT_LIMIT). A participant with an ` + "`" + `email` + "`" + ` becomes INVITED, one with only a ` + "`" + `displayName` + "`" + ` is ACTIVE right away (someone without an account). The response is identical whether or not an email belongs to an account. Entries left out of the list are removed. This only changes how the wallet is counted; who may spend from it is unaffected. Only the owner may edit the participant list (403 OWNER_ONLY for other members of the space).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "wallet-sharing"
+                ],
+                "summary": "Share a wallet: replace the participant list (owner only)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Space ID",
+                        "name": "spaceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Wallet ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Participants",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/wallets.SetParticipantsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/wallets.SetParticipantsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "OWNER_ONLY",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "422": {
+                        "description": "SHARE_TOTAL_INVALID / PARTICIPANT_LIMIT",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Answers 204. With ` + "`" + `?return=wallet` + "`" + ` it answers 200 with the wallet as it is now, so the client can update in place.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "wallet-sharing"
+                ],
+                "summary": "Stop sharing: 100% returns to the owner and everyone else is removed (owner only)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Space ID",
+                        "name": "spaceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Wallet ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "wallet: answer 200 with the wallet instead of 204",
+                        "name": "return",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/wallets.WalletDTO"
+                        }
+                    },
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "OWNER_ONLY",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/spaces/{spaceId}/wallets/{id}/share-changes": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "wallet-sharing"
+                ],
+                "summary": "Audit trail of a wallet's sharing arrangement, newest first (owner only)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Space ID",
+                        "name": "spaceId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Wallet ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/wallets.ShareChangeDTO"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "OWNER_ONLY",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/httpx.ErrorEnvelope"
                         }
@@ -8905,6 +9324,13 @@ const docTemplate = `{
                 "realizedPl": {
                     "type": "string"
                 },
+                "splits": {
+                    "description": "Splits and ToWalletSplits attribute this transaction's effect on ` + "`" + `wallet` + "`" + ` (or\n` + "`" + `toWallet` + "`" + `) between that wallet's participants, by their current percentage\nshare. Present only when the respective wallet is shared (Phase P20); absent\notherwise. Computed at read time, never stored.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/transactions.TransactionSplitDTO"
+                    }
+                },
                 "systemKey": {
                     "description": "SystemKey is set on transactions the backend wrote itself, so the client can localize the\ntitle: OPENING_BALANCE, BALANCE_TOP_UP, BALANCE_ADJUSTMENT. Null for user transactions.",
                     "type": "string",
@@ -8926,6 +9352,12 @@ const docTemplate = `{
                 "toWallet": {
                     "$ref": "#/definitions/transactions.Ref"
                 },
+                "toWalletSplits": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/transactions.TransactionSplitDTO"
+                    }
+                },
                 "type": {
                     "type": "string",
                     "enum": [
@@ -8944,6 +9376,24 @@ const docTemplate = `{
                 },
                 "wallet": {
                     "$ref": "#/definitions/transactions.Ref"
+                }
+            }
+        },
+        "transactions.TransactionSplitDTO": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "string"
+                },
+                "displayName": {
+                    "type": "string"
+                },
+                "participantId": {
+                    "type": "string"
+                },
+                "shareBps": {
+                    "type": "integer",
+                    "example": 3000
                 }
             }
         },
@@ -9209,6 +9659,17 @@ const docTemplate = `{
                 }
             }
         },
+        "wallets.AcceptResponse": {
+            "type": "object",
+            "properties": {
+                "spaceId": {
+                    "type": "string"
+                },
+                "walletId": {
+                    "type": "string"
+                }
+            }
+        },
         "wallets.CardStyle": {
             "type": "object",
             "properties": {
@@ -9292,6 +9753,41 @@ const docTemplate = `{
                 }
             }
         },
+        "wallets.InvitationDTO": {
+            "type": "object",
+            "properties": {
+                "invitedAt": {
+                    "type": "string"
+                },
+                "ownerName": {
+                    "type": "string"
+                },
+                "participantId": {
+                    "type": "string"
+                },
+                "shareBps": {
+                    "type": "integer"
+                },
+                "sharePct": {
+                    "type": "string",
+                    "example": "30.00"
+                },
+                "wallet": {
+                    "type": "object",
+                    "properties": {
+                        "currency": {
+                            "type": "string"
+                        },
+                        "icon": {
+                            "type": "string"
+                        },
+                        "name": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "wallets.ListResponse": {
             "type": "object",
             "properties": {
@@ -9303,6 +9799,61 @@ const docTemplate = `{
                 },
                 "total": {
                     "$ref": "#/definitions/currency.AggregateResult"
+                }
+            }
+        },
+        "wallets.ParticipantDTO": {
+            "type": "object",
+            "properties": {
+                "displayName": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "invitedAt": {
+                    "type": "string"
+                },
+                "isMe": {
+                    "type": "boolean"
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "OWNER",
+                        "PARTICIPANT"
+                    ]
+                },
+                "shareBps": {
+                    "type": "integer",
+                    "example": 3000
+                },
+                "sharePct": {
+                    "type": "string",
+                    "example": "30.00"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "ACTIVE",
+                        "INVITED",
+                        "DECLINED",
+                        "REMOVED"
+                    ]
+                }
+            }
+        },
+        "wallets.ParticipantsResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/wallets.ParticipantDTO"
+                    }
                 }
             }
         },
@@ -9336,6 +9887,56 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "wallets.SetParticipantsRequest": {
+            "type": "object",
+            "required": [
+                "participants"
+            ],
+            "properties": {
+                "participants": {
+                    "type": "array",
+                    "maxItems": 50,
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/wallets.participantRequest"
+                    }
+                }
+            }
+        },
+        "wallets.SetParticipantsResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/wallets.ParticipantDTO"
+                    }
+                },
+                "wallet": {
+                    "$ref": "#/definitions/wallets.WalletDTO"
+                }
+            }
+        },
+        "wallets.ShareChangeDTO": {
+            "type": "object",
+            "properties": {
+                "after": {
+                    "type": "object"
+                },
+                "before": {
+                    "type": "object"
+                },
+                "changedById": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
                     "type": "string"
                 }
             }
@@ -9395,11 +9996,30 @@ const docTemplate = `{
                 "isFavorite": {
                     "type": "boolean"
                 },
+                "isShared": {
+                    "type": "boolean"
+                },
+                "myBalance": {
+                    "type": "string"
+                },
+                "myShareBps": {
+                    "description": "MyShareBps and MyBalance are set only for a SHARED_IN wallet: the viewer's\npercentage of it and their share of Balance, in the wallet's own currency.",
+                    "type": "integer",
+                    "example": 3000
+                },
                 "name": {
                     "type": "string"
                 },
                 "overReserved": {
                     "type": "boolean"
+                },
+                "ownership": {
+                    "description": "Ownership is OWNER for this space's own wallets and SHARED_IN for ones shared\ninto it by someone else (read-only; present only with ?include=shared).",
+                    "type": "string",
+                    "enum": [
+                        "OWNER",
+                        "SHARED_IN"
+                    ]
                 },
                 "pctOfTotal": {
                     "type": "string",
@@ -9421,6 +10041,17 @@ const docTemplate = `{
                         "CASH",
                         "OTHER"
                     ]
+                }
+            }
+        },
+        "wallets.acceptRequest": {
+            "type": "object",
+            "required": [
+                "spaceId"
+            ],
+            "properties": {
+                "spaceId": {
+                    "type": "string"
                 }
             }
         },
@@ -9463,6 +10094,35 @@ const docTemplate = `{
                         "CASH",
                         "OTHER"
                     ]
+                }
+            }
+        },
+        "wallets.participantRequest": {
+            "type": "object",
+            "required": [
+                "displayName",
+                "sharePct"
+            ],
+            "properties": {
+                "displayName": {
+                    "type": "string",
+                    "maxLength": 120,
+                    "minLength": 1
+                },
+                "email": {
+                    "type": "string",
+                    "maxLength": 254
+                },
+                "isOwner": {
+                    "type": "boolean"
+                },
+                "participantId": {
+                    "type": "string"
+                },
+                "sharePct": {
+                    "type": "string",
+                    "maxLength": 16,
+                    "example": "30.00"
                 }
             }
         },

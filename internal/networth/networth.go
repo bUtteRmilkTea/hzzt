@@ -18,6 +18,7 @@ import (
 	"github.com/JonathanRainee/hzzt/internal/manualassets"
 	"github.com/JonathanRainee/hzzt/internal/marketdata/jobs"
 	"github.com/JonathanRainee/hzzt/internal/platform/apperror"
+	"github.com/JonathanRainee/hzzt/internal/wallets"
 )
 
 // Tracking modes of a space.
@@ -61,17 +62,18 @@ type Service struct {
 	q           *sqlc.Queries
 	currency    *currency.Service
 	investments *investments.Service
+	wallets     *wallets.Service
 	assets      *manualassets.Service
 	runner      *jobs.Runner
 	now         func() time.Time
 }
 
 // NewService builds the service; now may be nil.
-func NewService(database DB, cur *currency.Service, inv *investments.Service, assets *manualassets.Service, now func() time.Time) *Service {
+func NewService(database DB, cur *currency.Service, inv *investments.Service, w *wallets.Service, assets *manualassets.Service, now func() time.Time) *Service {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{q: sqlc.New(database), currency: cur, investments: inv, assets: assets, now: now}
+	return &Service{q: sqlc.New(database), currency: cur, investments: inv, wallets: w, assets: assets, now: now}
 }
 
 // Compute builds the net-worth summary of a space. at is the reference time for
@@ -106,13 +108,9 @@ func (s *Service) Compute(ctx context.Context, spaceID uuid.UUID, at *time.Time)
 		}
 	}
 
-	wallets, err := s.q.ListWallets(ctx, spaceID)
+	items, err := s.wallets.NetWorthItems(ctx, spaceID)
 	if err != nil {
 		return Summary{}, err
-	}
-	items := make([]currency.MoneyItem, 0, len(wallets))
-	for _, w := range wallets {
-		items = append(items, currency.MoneyItem{Label: w.Name, Amount: w.Balance, Currency: w.Currency})
 	}
 	cash := currency.Aggregate(items, cc)
 	out.Cash = cash.Total

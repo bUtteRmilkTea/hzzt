@@ -114,7 +114,7 @@ func run() error {
 	walletsHandler := wallets.NewHandler(walletsSvc, authSvc, spacesSvc)
 	transactionsSvc := transactions.NewService(pool, currencySvc, nil)
 	categoriesSvc.SetUsageChecker(transactionsSvc.CategoryInUse) // locks a category's type once used
-	transactionsHandler := transactions.NewHandler(transactionsSvc, authSvc, spacesSvc)
+	transactionsHandler := transactions.NewHandler(transactionsSvc, authSvc, spacesSvc, walletsSvc)
 	var crypto marketdata.Crypto // stays a nil interface when no key is configured
 	if cfg.CMCAPIKey != "" {
 		crypto = coinmarketcap.New("", cfg.CMCAPIKey)
@@ -137,7 +137,7 @@ func run() error {
 	goalsHandler := goals.NewHandler(goals.NewService(pool, currencySvc, nil), authSvc, spacesSvc)
 	manualAssetsSvc := manualassets.NewService(pool, currencySvc, transactionsSvc, nil)
 	manualAssetsHandler := manualassets.NewHandler(manualAssetsSvc, authSvc, spacesSvc)
-	networthSvc := networth.NewService(pool, currencySvc, investmentsSvc, manualAssetsSvc, nil)
+	networthSvc := networth.NewService(pool, currencySvc, investmentsSvc, walletsSvc, manualAssetsSvc, nil)
 	networthSvc.SetRunner(jobs.New(pool, log, nil))
 	networthHandler := networth.NewHandler(networthSvc, authSvc, spacesSvc)
 	dashboardHandler := dashboard.NewHandler(dashboard.NewService(pool, currencySvc, nil), authSvc, spacesSvc)

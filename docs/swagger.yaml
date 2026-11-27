@@ -2282,6 +2282,15 @@ definitions:
         type: string
       realizedPl:
         type: string
+      splits:
+        description: |-
+          Splits and ToWalletSplits attribute this transaction's effect on `wallet` (or
+          `toWallet`) between that wallet's participants, by their current percentage
+          share. Present only when the respective wallet is shared (Phase P20); absent
+          otherwise. Computed at read time, never stored.
+        items:
+          $ref: '#/definitions/transactions.TransactionSplitDTO'
+        type: array
       systemKey:
         description: |-
           SystemKey is set on transactions the backend wrote itself, so the client can localize the
@@ -2299,6 +2308,10 @@ definitions:
         type: string
       toWallet:
         $ref: '#/definitions/transactions.Ref'
+      toWalletSplits:
+        items:
+          $ref: '#/definitions/transactions.TransactionSplitDTO'
+        type: array
       type:
         enum:
         - INCOME
@@ -2313,6 +2326,18 @@ definitions:
         type: string
       wallet:
         $ref: '#/definitions/transactions.Ref'
+    type: object
+  transactions.TransactionSplitDTO:
+    properties:
+      amount:
+        type: string
+      displayName:
+        type: string
+      participantId:
+        type: string
+      shareBps:
+        example: 3000
+        type: integer
     type: object
   transactions.createRequest:
     properties:
@@ -2497,6 +2522,13 @@ definitions:
     required:
     - pin
     type: object
+  wallets.AcceptResponse:
+    properties:
+      spaceId:
+        type: string
+      walletId:
+        type: string
+    type: object
   wallets.CardStyle:
     properties:
       color:
@@ -2560,6 +2592,29 @@ definitions:
       hideType:
         type: boolean
     type: object
+  wallets.InvitationDTO:
+    properties:
+      invitedAt:
+        type: string
+      ownerName:
+        type: string
+      participantId:
+        type: string
+      shareBps:
+        type: integer
+      sharePct:
+        example: "30.00"
+        type: string
+      wallet:
+        properties:
+          currency:
+            type: string
+          icon:
+            type: string
+          name:
+            type: string
+        type: object
+    type: object
   wallets.ListResponse:
     properties:
       items:
@@ -2568,6 +2623,44 @@ definitions:
         type: array
       total:
         $ref: '#/definitions/currency.AggregateResult'
+    type: object
+  wallets.ParticipantDTO:
+    properties:
+      displayName:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      invitedAt:
+        type: string
+      isMe:
+        type: boolean
+      role:
+        enum:
+        - OWNER
+        - PARTICIPANT
+        type: string
+      shareBps:
+        example: 3000
+        type: integer
+      sharePct:
+        example: "30.00"
+        type: string
+      status:
+        enum:
+        - ACTIVE
+        - INVITED
+        - DECLINED
+        - REMOVED
+        type: string
+    type: object
+  wallets.ParticipantsResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/wallets.ParticipantDTO'
+        type: array
     type: object
   wallets.PrefsRequest:
     properties:
@@ -2589,6 +2682,39 @@ definitions:
       id:
         type: string
       name:
+        type: string
+    type: object
+  wallets.SetParticipantsRequest:
+    properties:
+      participants:
+        items:
+          $ref: '#/definitions/wallets.participantRequest'
+        maxItems: 50
+        minItems: 1
+        type: array
+    required:
+    - participants
+    type: object
+  wallets.SetParticipantsResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/wallets.ParticipantDTO'
+        type: array
+      wallet:
+        $ref: '#/definitions/wallets.WalletDTO'
+    type: object
+  wallets.ShareChangeDTO:
+    properties:
+      after:
+        type: object
+      before:
+        type: object
+      changedById:
+        type: string
+      createdAt:
+        type: string
+      id:
         type: string
     type: object
   wallets.Template:
@@ -2634,10 +2760,28 @@ definitions:
         type: string
       isFavorite:
         type: boolean
+      isShared:
+        type: boolean
+      myBalance:
+        type: string
+      myShareBps:
+        description: |-
+          MyShareBps and MyBalance are set only for a SHARED_IN wallet: the viewer's
+          percentage of it and their share of Balance, in the wallet's own currency.
+        example: 3000
+        type: integer
       name:
         type: string
       overReserved:
         type: boolean
+      ownership:
+        description: |-
+          Ownership is OWNER for this space's own wallets and SHARED_IN for ones shared
+          into it by someone else (read-only; present only with ?include=shared).
+        enum:
+        - OWNER
+        - SHARED_IN
+        type: string
       pctOfTotal:
         example: "33.33"
         type: string
@@ -2656,6 +2800,13 @@ definitions:
         - CASH
         - OTHER
         type: string
+    type: object
+  wallets.acceptRequest:
+    properties:
+      spaceId:
+        type: string
+    required:
+    - spaceId
     type: object
   wallets.createRequest:
     properties:
@@ -2687,6 +2838,27 @@ definitions:
     - icon
     - name
     - type
+    type: object
+  wallets.participantRequest:
+    properties:
+      displayName:
+        maxLength: 120
+        minLength: 1
+        type: string
+      email:
+        maxLength: 254
+        type: string
+      isOwner:
+        type: boolean
+      participantId:
+        type: string
+      sharePct:
+        example: "30.00"
+        maxLength: 16
+        type: string
+    required:
+    - displayName
+    - sharePct
     type: object
   wallets.reorderRequest:
     properties:
@@ -3524,6 +3696,119 @@ paths:
       summary: Leave a shared investment
       tags:
       - sharing
+  /me/shared-wallet-invitations:
+    get:
+      description: Invitations addressed to my account or to my account's email (case-insensitive),
+        including ones sent before I registered. Shows the wallet and my share, never
+        the owner's space.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/wallets.InvitationDTO'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: My pending shared-wallet invitations
+      tags:
+      - wallet-sharing
+  /me/shared-wallet-invitations/{participantId}/accept:
+    post:
+      consumes:
+      - application/json
+      description: The wallet is attached to the given space (you must be a member
+        of it, and it must not be the owner's space); that space then counts my share
+        and lists it with `include=shared`.
+      parameters:
+      - description: Invitation (participant) ID
+        in: path
+        name: participantId
+        required: true
+        type: string
+      - description: Space to attach it to
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/wallets.acceptRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/wallets.AcceptResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorEnvelope'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorEnvelope'
+        "409":
+          description: SHARE_INVITATION_ANSWERED
+          schema:
+            $ref: '#/definitions/httpx.ErrorEnvelope'
+      security:
+      - BearerAuth: []
+      summary: Accept a shared-wallet invitation
+      tags:
+      - wallet-sharing
+  /me/shared-wallet-invitations/{participantId}/decline:
+    post:
+      parameters:
+      - description: Invitation (participant) ID
+        in: path
+        name: participantId
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorEnvelope'
+        "409":
+          description: SHARE_INVITATION_ANSWERED
+          schema:
+            $ref: '#/definitions/httpx.ErrorEnvelope'
+      security:
+      - BearerAuth: []
+      summary: Decline a shared-wallet invitation (the share stays allocated until
+        the owner changes it)
+      tags:
+      - wallet-sharing
+  /me/shared-wallets/{participantId}/leave:
+    post:
+      description: My share stays allocated but becomes a name-only participant; the
+        owner finds the change in the audit trail.
+      parameters:
+      - description: My participant ID
+        in: path
+        name: participantId
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorEnvelope'
+        "422":
+          description: SHARE_OWNER_CANNOT_LEAVE
+          schema:
+            $ref: '#/definitions/httpx.ErrorEnvelope'
+      security:
+      - BearerAuth: []
+      summary: Leave a shared wallet
+      tags:
+      - wallet-sharing
   /spaces:
     get:
       produces:
@@ -6205,16 +6490,23 @@ paths:
       - transfers
   /spaces/{spaceId}/wallets:
     get:
-      description: Favorites first, then sortOrder. `total` is converted to the space
+      description: 'Favorites first, then sortOrder. `total` is converted to the space
         base currency; wallets without a usable FX rate are left out and reported
         in `total.warnings`. Each item also carries `baseBalance` and `pctOfTotal`
         (percent of the total, 2 decimals, adding up to exactly 100.00; null without
-        an FX rate) for pie charts.
+        an FX rate) for pie charts. With `?include=shared`, also lists wallets shared
+        into this space by another space''s owner: these come back `ownership: SHARED_IN`,
+        read-only, with `myShareBps` and `myBalance` (my share of the wallet''s balance);
+        they are not part of `total`.'
       parameters:
       - description: Space ID
         in: path
         name: spaceId
         required: true
+        type: string
+      - description: 'shared: also include wallets shared into this space'
+        in: query
+        name: include
         type: string
       produces:
       - application/json
@@ -6502,6 +6794,173 @@ paths:
       summary: Set my display preferences of a wallet (hide logo, name, type)
       tags:
       - wallets
+  /spaces/{spaceId}/wallets/{id}/participants:
+    delete:
+      description: Answers 204. With `?return=wallet` it answers 200 with the wallet
+        as it is now, so the client can update in place.
+      parameters:
+      - description: Space ID
+        in: path
+        name: spaceId
+        required: true
+        type: string
+      - description: Wallet ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 'wallet: answer 200 with the wallet instead of 204'
+        in: query
+        name: return
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/wallets.WalletDTO'
+        "204":
+          description: No Content
+        "403":
+          description: OWNER_ONLY
+          schema:
+            $ref: '#/definitions/httpx.ErrorEnvelope'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorEnvelope'
+      security:
+      - BearerAuth: []
+      summary: 'Stop sharing: 100% returns to the owner and everyone else is removed
+        (owner only)'
+      tags:
+      - wallet-sharing
+    get:
+      parameters:
+      - description: Space ID
+        in: path
+        name: spaceId
+        required: true
+        type: string
+      - description: Wallet ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/wallets.ParticipantsResponse'
+        "403":
+          description: OWNER_ONLY
+          schema:
+            $ref: '#/definitions/httpx.ErrorEnvelope'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorEnvelope'
+      security:
+      - BearerAuth: []
+      summary: List who a wallet is shared with (owner only)
+      tags:
+      - wallet-sharing
+    put:
+      consumes:
+      - application/json
+      description: 'Full replacement. Include yourself (`isOwner: true`, or your own
+        email) with a share above 0. Shares are percentages with up to 2 decimals
+        and the shares of all participants must add up to exactly 100.00 (422 SHARE_TOTAL_INVALID);
+        at most 10 people (422 PARTICIPANT_LIMIT). A participant with an `email` becomes
+        INVITED, one with only a `displayName` is ACTIVE right away (someone without
+        an account). The response is identical whether or not an email belongs to
+        an account. Entries left out of the list are removed. This only changes how
+        the wallet is counted; who may spend from it is unaffected. Only the owner
+        may edit the participant list (403 OWNER_ONLY for other members of the space).'
+      parameters:
+      - description: Space ID
+        in: path
+        name: spaceId
+        required: true
+        type: string
+      - description: Wallet ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Participants
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/wallets.SetParticipantsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/wallets.SetParticipantsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorEnvelope'
+        "403":
+          description: OWNER_ONLY
+          schema:
+            $ref: '#/definitions/httpx.ErrorEnvelope'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorEnvelope'
+        "422":
+          description: SHARE_TOTAL_INVALID / PARTICIPANT_LIMIT
+          schema:
+            $ref: '#/definitions/httpx.ErrorEnvelope'
+      security:
+      - BearerAuth: []
+      summary: 'Share a wallet: replace the participant list (owner only)'
+      tags:
+      - wallet-sharing
+  /spaces/{spaceId}/wallets/{id}/share-changes:
+    get:
+      parameters:
+      - description: Space ID
+        in: path
+        name: spaceId
+        required: true
+        type: string
+      - description: Wallet ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/wallets.ShareChangeDTO'
+            type: array
+        "403":
+          description: OWNER_ONLY
+          schema:
+            $ref: '#/definitions/httpx.ErrorEnvelope'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorEnvelope'
+      security:
+      - BearerAuth: []
+      summary: Audit trail of a wallet's sharing arrangement, newest first (owner
+        only)
+      tags:
+      - wallet-sharing
   /spaces/{spaceId}/wallets/{id}/top-up:
     post:
       consumes:

@@ -14,7 +14,7 @@ import (
 const createWallet = `-- name: CreateWallet :one
 INSERT INTO wallets (space_id, type, name, icon, currency, is_favorite, sort_order, card_style, created_by_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, space_id, type, name, icon, currency, balance, is_favorite, sort_order, card_style, created_by_id, created_at, updated_at, deleted_at
+RETURNING id, space_id, type, name, icon, currency, balance, is_favorite, sort_order, card_style, created_by_id, created_at, updated_at, deleted_at, is_shared
 `
 
 type CreateWalletParams struct {
@@ -57,12 +57,13 @@ func (q *Queries) CreateWallet(ctx context.Context, arg CreateWalletParams) (Wal
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.IsShared,
 	)
 	return i, err
 }
 
 const getWallet = `-- name: GetWallet :one
-SELECT id, space_id, type, name, icon, currency, balance, is_favorite, sort_order, card_style, created_by_id, created_at, updated_at, deleted_at FROM wallets WHERE id = $1 AND space_id = $2 AND deleted_at IS NULL
+SELECT id, space_id, type, name, icon, currency, balance, is_favorite, sort_order, card_style, created_by_id, created_at, updated_at, deleted_at, is_shared FROM wallets WHERE id = $1 AND space_id = $2 AND deleted_at IS NULL
 `
 
 type GetWalletParams struct {
@@ -88,12 +89,13 @@ func (q *Queries) GetWallet(ctx context.Context, arg GetWalletParams) (Wallet, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.IsShared,
 	)
 	return i, err
 }
 
 const getWalletForUpdate = `-- name: GetWalletForUpdate :one
-SELECT id, space_id, type, name, icon, currency, balance, is_favorite, sort_order, card_style, created_by_id, created_at, updated_at, deleted_at FROM wallets WHERE id = $1 AND space_id = $2 AND deleted_at IS NULL FOR UPDATE
+SELECT id, space_id, type, name, icon, currency, balance, is_favorite, sort_order, card_style, created_by_id, created_at, updated_at, deleted_at, is_shared FROM wallets WHERE id = $1 AND space_id = $2 AND deleted_at IS NULL FOR UPDATE
 `
 
 type GetWalletForUpdateParams struct {
@@ -119,6 +121,7 @@ func (q *Queries) GetWalletForUpdate(ctx context.Context, arg GetWalletForUpdate
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.IsShared,
 	)
 	return i, err
 }
@@ -148,7 +151,7 @@ func (q *Queries) ListWalletIDsForUpdate(ctx context.Context, spaceID uuid.UUID)
 }
 
 const listWallets = `-- name: ListWallets :many
-SELECT id, space_id, type, name, icon, currency, balance, is_favorite, sort_order, card_style, created_by_id, created_at, updated_at, deleted_at FROM wallets
+SELECT id, space_id, type, name, icon, currency, balance, is_favorite, sort_order, card_style, created_by_id, created_at, updated_at, deleted_at, is_shared FROM wallets
 WHERE space_id = $1 AND deleted_at IS NULL
 ORDER BY is_favorite DESC, sort_order, created_at, id
 `
@@ -177,6 +180,7 @@ func (q *Queries) ListWallets(ctx context.Context, spaceID uuid.UUID) ([]Wallet,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.IsShared,
 		); err != nil {
 			return nil, err
 		}
@@ -242,7 +246,7 @@ UPDATE wallets SET
     is_favorite = COALESCE($8, is_favorite),
     updated_at  = now()
 WHERE id = $1 AND space_id = $2 AND deleted_at IS NULL
-RETURNING id, space_id, type, name, icon, currency, balance, is_favorite, sort_order, card_style, created_by_id, created_at, updated_at, deleted_at
+RETURNING id, space_id, type, name, icon, currency, balance, is_favorite, sort_order, card_style, created_by_id, created_at, updated_at, deleted_at, is_shared
 `
 
 type UpdateWalletParams struct {
@@ -283,6 +287,7 @@ func (q *Queries) UpdateWallet(ctx context.Context, arg UpdateWalletParams) (Wal
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.IsShared,
 	)
 	return i, err
 }

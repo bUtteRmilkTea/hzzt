@@ -2,6 +2,7 @@ package transactions
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -21,18 +22,21 @@ import (
 	"github.com/JonathanRainee/hzzt/internal/platform/httpx"
 	"github.com/JonathanRainee/hzzt/internal/platform/period"
 	"github.com/JonathanRainee/hzzt/internal/spaces"
+	"github.com/JonathanRainee/hzzt/internal/wallets"
 )
 
 // Handler exposes the transaction endpoints.
 type Handler struct {
-	svc    *Service
-	auth   *auth.Service
-	spaces *spaces.Service
+	svc     *Service
+	auth    *auth.Service
+	spaces  *spaces.Service
+	wallets *wallets.Service
 }
 
-// NewHandler creates the HTTP layer.
-func NewHandler(svc *Service, authSvc *auth.Service, spacesSvc *spaces.Service) *Handler {
-	return &Handler{svc: svc, auth: authSvc, spaces: spacesSvc}
+// NewHandler creates the HTTP layer. wallets is used only to attach a `splits` field
+// to a transaction that touches a shared wallet (Phase P20); it is never written to.
+func NewHandler(svc *Service, authSvc *auth.Service, spacesSvc *spaces.Service, walletsSvc *wallets.Service) *Handler {
+	return &Handler{svc: svc, auth: authSvc, spaces: spacesSvc, wallets: walletsSvc}
 }
 
 // Mount registers the routes on r (the /api/v1 router). Any space member may
@@ -104,10 +108,87 @@ type TransactionDTO struct {
 	ToAmount    *decimal.Decimal `json:"toAmount,omitempty" swaggertype:"string"`
 	ToCurrency  *string          `json:"toCurrency,omitempty"`
 	FxRate      *decimal.Decimal `json:"fxRate,omitempty" swaggertype:"string"`
-	OccurredAt  time.Time        `json:"occurredAt"`
-	CreatedByID uuid.UUID        `json:"createdById"`
-	CreatedAt   time.Time        `json:"createdAt"`
-	UpdatedAt   time.Time        `json:"updatedAt"`
+	// Splits and ToWalletSplits attribute this transaction's effect on `wallet` (or
+	// `toWallet`) between that wallet's participants, by their current percentage
+	// share. Present only when the respective wallet is shared (Phase P20); absent
+	// otherwise. Computed at read time, never stored.
+	Splits         []TransactionSplitDTO `json:"splits,omitempty"`
+	ToWalletSplits []TransactionSplitDTO `json:"toWalletSplits,omitempty"`
+	OccurredAt     time.Time             `json:"occurredAt"`
+	CreatedByID    uuid.UUID             `json:"createdById"`
+	CreatedAt      time.Time             `json:"createdAt"`
+	UpdatedAt      time.Time             `json:"updatedAt"`
+}
+
+// TransactionSplitDTO is one participant's part of a transaction on a shared wallet.
+type TransactionSplitDTO struct {
+	ParticipantID uuid.UUID       `json:"participantId"`
+	DisplayName   string          `json:"displayName"`
+	ShareBps      int             `json:"shareBps" example:"3000"`
+	Amount        decimal.Decimal `json:"amount" swaggertype:"string"`
+}
+
+func toSplitDTOs(parts []wallets.TransactionSplit) []TransactionSplitDTO {
+	if len(parts) == 0 {
+		return nil
+	}
+	out := make([]TransactionSplitDTO, len(parts))
+	for i, p := range parts {
+		out[i] = TransactionSplitDTO{ParticipantID: p.ParticipantID, DisplayName: p.DisplayName, ShareBps: p.ShareBps, Amount: p.Amount}
+	}
+	return out
+}
+
+// txnForSplit rebuilds the sqlc.Transaction fields wallets.Split needs from a Detail row.
+func txnForSplit(d Detail) sqlc.Transaction {
+	return sqlc.Transaction{
+		ID: d.ID, SpaceID: d.SpaceID, Type: d.Type, Amount: d.Amount, Currency: d.Currency,
+		WalletID: d.WalletID, ToWalletID: d.ToWalletID, ToAmount: d.ToAmount, ToCurrency: d.ToCurrency,
+		Direction: d.Direction, InvestmentAction: d.InvestmentAction, SettlementDirection: d.SettlementDirection,
+	}
+}
+
+// attachSplits fills Splits/ToWalletSplits on every item whose wallet or to-wallet is
+// shared, batching the participant lookup across the whole page in one query.
+func (h *Handler) attachSplits(ctx context.Context, items []TransactionDTO, details []Detail) error {
+	ids := make([]uuid.UUID, 0, len(details)*2)
+	for _, d := range details {
+		if d.WalletID.Valid {
+			ids = append(ids, d.WalletID.UUID)
+		}
+		if d.ToWalletID.Valid {
+			ids = append(ids, d.ToWalletID.UUID)
+		}
+	}
+	byWallet, err := h.wallets.LiveParticipantsByWallet(ctx, ids)
+	if err != nil {
+		return err
+	}
+	if len(byWallet) == 0 {
+		return nil
+	}
+	for i, d := range details {
+		t := txnForSplit(d)
+		if d.WalletID.Valid {
+			if ps, ok := byWallet[d.WalletID.UUID]; ok {
+				parts, err := wallets.Split(t, d.WalletID.UUID, ps)
+				if err != nil {
+					return err
+				}
+				items[i].Splits = toSplitDTOs(parts)
+			}
+		}
+		if d.ToWalletID.Valid {
+			if ps, ok := byWallet[d.ToWalletID.UUID]; ok {
+				parts, err := wallets.Split(t, d.ToWalletID.UUID, ps)
+				if err != nil {
+					return err
+				}
+				items[i].ToWalletSplits = toSplitDTOs(parts)
+			}
+		}
+	}
+	return nil
 }
 
 func ref(id uuid.NullUUID, name, icon, color *string) *Ref {
@@ -395,7 +476,17 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, ToDTO(d))
+	h.writeWithSplits(w, r, http.StatusCreated, d)
+}
+
+// writeWithSplits answers with one transaction, filling splits/toWalletSplits first.
+func (h *Handler) writeWithSplits(w http.ResponseWriter, r *http.Request, status int, d Detail) {
+	items := []TransactionDTO{ToDTO(d)}
+	if err := h.attachSplits(r.Context(), items, []Detail{d}); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	writeJSON(w, status, items[0])
 }
 
 // topUp godoc
@@ -435,7 +526,7 @@ func (h *Handler) topUp(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, ToDTO(d))
+	h.writeWithSplits(w, r, http.StatusCreated, d)
 }
 
 // get godoc
@@ -460,7 +551,7 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, ToDTO(d))
+	h.writeWithSplits(w, r, http.StatusOK, d)
 }
 
 // update godoc
@@ -511,7 +602,7 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, ToDTO(d))
+	h.writeWithSplits(w, r, http.StatusOK, d)
 }
 
 // delete godoc
@@ -583,6 +674,10 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	out := ListResponse{Items: make([]TransactionDTO, 0, len(res.Items)), Total: res.Total}
 	for _, d := range res.Items {
 		out.Items = append(out.Items, ToDTO(d))
+	}
+	if err := h.attachSplits(r.Context(), out.Items, res.Items); err != nil {
+		httpx.WriteError(w, r, err)
+		return
 	}
 	if res.NextCursor != "" {
 		out.NextCursor = &res.NextCursor
